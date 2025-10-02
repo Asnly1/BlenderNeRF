@@ -62,7 +62,7 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
 
         if scene.test_data:
             # Attempt to load extrinsics from an existing transforms_test.json.
-            test_json = getattr(scene, 'matrix_transforms_path', '')
+            test_json = getattr(scene, 'mat_transforms_path', '')
             existing_frames = self.load_existing_transforms_data(test_json)
             
             if existing_frames:
@@ -95,7 +95,7 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
             if scene.render_frames:
                 output_train = os.path.join(output_path, 'train')
                 os.makedirs(output_train, exist_ok=True)
-                scene.rendering = (False, False, True)
+                scene.rendering = (False, False, True, False)
                 scene.frame_end = scene.frame_start + scene.cos_nb_frames - 1 # update end frame
 
                 # Enable the compositor and clear existing nodes.
@@ -219,7 +219,7 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
                     tree.links.new(rl_node.outputs['Normal'], normal_exr_node.inputs[0])
 
                 bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True) # render scene
-                scene.rendering = (False, False, False)
+                scene.rendering = (False, False, False, False)
 
         # if frames are rendered, the below code is executed by the handler function
         if not any(scene.rendering):

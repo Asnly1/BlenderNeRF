@@ -53,7 +53,7 @@ class SubsetOfFrames(blender_nerf_operator.BlenderNeRF_Operator):
             if scene.render_frames:
                 output_train = os.path.join(output_path, 'train')
                 os.makedirs(output_train, exist_ok=True)
-                scene.rendering = (True, False, False)
+                scene.rendering = (True, False, False, False)
                 scene.frame_step = scene.train_frame_steps # update frame step
                 scene.render.filepath = os.path.join(output_train, '') # training frames path
                 bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True) # render scene

@@ -107,7 +107,6 @@ class BlenderNeRF_Operator(bpy.types.Operator):
         camera_extr_dict = []
         for frame in range(scene.frame_start, end + 1, step):
             scene.frame_set(frame)
-            filename = os.path.basename( scene.render.frame_path(frame=frame) )
             filedir = OUTPUT_TRAIN * (mode == 'TRAIN') + OUTPUT_TEST * (mode == 'TEST')
 
             # 提取帧号并格式化为frame_00001格式
@@ -204,10 +203,11 @@ class BlenderNeRF_Operator(bpy.types.Operator):
         sof_name = scene.sof_dataset_name
         ttc_name = scene.ttc_dataset_name
         cos_name = scene.cos_dataset_name
+        mat_name = scene.mat_dataset_name
 
         error_messages = []
 
-        if (method == 'SOF' or method == 'COS') and not camera.data.type == 'PERSP':
+        if (method in ('SOF', 'COS', 'MAT')) and not camera.data.type == 'PERSP':
             error_messages.append('Only perspective cameras are supported!')
 
         if method == 'TTC' and not (train_camera.data.type == 'PERSP' and test_camera.data.type == 'PERSP'):
@@ -218,11 +218,22 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             if not sphere_camera.data.type == 'PERSP':
                 error_messages.append('BlenderNeRF Camera must remain a perspective camera!')
 
-        if (method == 'SOF' and sof_name == '') or (method == 'TTC' and ttc_name == '') or (method == 'COS' and cos_name == ''):
+        if (
+            (method == 'SOF' and sof_name == '') or
+            (method == 'TTC' and ttc_name == '') or
+            (method == 'COS' and cos_name == '') or
+            (method == 'MAT' and mat_name == '')
+        ):
             error_messages.append('Dataset name cannot be empty!')
 
         if method == 'COS' and any(x == 0 for x in scene.sphere_scale):
             error_messages.append('The BlenderNeRF Sphere cannot be flat! Change its scale to be non zero in all axes.')
+
+        if method == 'MAT':
+            if not scene.mat_transforms_path:
+                error_messages.append('Matrix transforms path cannot be empty!')
+            elif not os.path.exists(bpy.path.abspath(scene.mat_transforms_path)):
+                error_messages.append('Matrix transforms path must point to an existing file!')
 
         if not scene.nerf and not self.is_power_of_two(scene.aabb):
             error_messages.append('AABB scale needs to be a power of two!')
@@ -265,7 +276,7 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             logdata['Frames'] = scene.ttc_nb_frames
             logdata['Dataset Name'] = scene.ttc_dataset_name
 
-        else:
+        elif method == 'COS':
             logdata['Camera'] = scene.camera.name
             logdata['Location'] = str(list(scene.sphere_location))
             logdata['Rotation'] = str(list(scene.sphere_rotation))
@@ -277,7 +288,13 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             logdata['Upper Views'] = scene.upper_views
             logdata['Outwards'] = scene.outwards
             logdata['Dataset Name'] = scene.cos_dataset_name
-        
+
+        elif method == 'MAT':
+            logdata['Camera'] = scene.camera.name
+            logdata['Transforms Path'] = scene.mat_transforms_path
+            logdata['Frames'] = scene.mat_nb_frames
+            logdata['Dataset Name'] = scene.mat_dataset_name
+
         if camera:
             # 获取完整的相机内参信息
             camera_intrinsics = self.get_camera_intrinsics(scene, camera)

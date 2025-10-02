@@ -17,7 +17,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
 
     def load_transforms_data(self, scene):
         """Load transform metadata from the path defined on the scene."""
-        transforms_path = getattr(scene, 'matrix_transforms_path', '')
+        transforms_path = getattr(scene, 'mat_transforms_path', '')
 
         if not transforms_path:
             self.report({'ERROR'}, 'Matrix transforms path not set!')
@@ -32,7 +32,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                 self.transforms_data = json.load(file_handle)
 
             frames_count = len(self.transforms_data.get('frames', []))
-            self.mat_nb_frames = frames_count
+            scene.mat_nb_frames = frames_count
             return True
 
         except json.JSONDecodeError as exc:
@@ -124,7 +124,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
 
         output_data = self.get_camera_intrinsics(scene, camera)
 
-        output_dir = bpy.path.clean_name(scene.cos_dataset_name)
+        output_dir = bpy.path.clean_name(scene.mat_dataset_name)
         output_path = os.path.join(scene.save_path, output_dir)
         os.makedirs(output_path, exist_ok=True)
         
@@ -187,7 +187,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
             if scene.render_frames:
                 output_train = os.path.join(output_path, 'train')
                 os.makedirs(output_train, exist_ok=True)
-                scene.rendering = (False, False, True)
+                scene.rendering = (False, False, False, True)
                 scene.frame_end = scene.frame_start + max(scene.mat_nb_frames - 1, 0)
 
                 if frames:
@@ -324,7 +324,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                 if global_handler_disabled and helper.cos_camera_update not in bpy.app.handlers.frame_change_post:
                     bpy.app.handlers.frame_change_post.append(helper.cos_camera_update)
                 global_handler_disabled = False
-                scene.rendering = (False, False, False)
+                scene.rendering = (False, False, False, False)
 
         if not any(scene.rendering):
             if global_handler_disabled and helper.cos_camera_update not in bpy.app.handlers.frame_change_post:

@@ -54,4 +54,4 @@ class BlenderNeRF_UI(bpy.types.Panel):
             layout.prop(scene, 'save_path')
                         
             layout.separator()
-            layout.prop(scene, 'matrix_transforms_path')
+            layout.prop(scene, 'mat_transforms_path')

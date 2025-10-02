@@ -36,7 +36,7 @@ PROPS = [
     # global automatic properties
     ('init_frame_step', bpy.props.IntProperty(name='Initial Frame Step') ),
     ('init_output_path', bpy.props.StringProperty(name='Initial Output Path', subtype='DIR_PATH') ),
-    ('rendering', bpy.props.BoolVectorProperty(name='Rendering', description='Whether one of the SOF, TTC or COS methods is rendering', default=(False, False, False), size=3) ),
+    ('rendering', bpy.props.BoolVectorProperty(name='Rendering', description='Whether one of the SOF, TTC, COS or MAT methods is rendering', default=(False, False, False, False), size=4) ),
     ('blendernerf_version', bpy.props.StringProperty(name='BlenderNeRF Version', default=VERSION) ),
 
     # sof properties
@@ -81,7 +81,8 @@ PROPS = [
     ('frames_3', bpy.props.IntProperty(name='Frames 3', description='Number of frames at third z-level', default=6, soft_min=1, update=helper.update_multi_level_frames) ),
 
     # matrix camera render properties
-    ('matrix_transforms_path', bpy.props.StringProperty(name='Matrix Transforms Path', description='Path to the transforms_test.json file for matrix camera rendering', subtype='FILE_PATH') ),
+    ('mat_dataset_name', bpy.props.StringProperty(name='Name', description='Name of the MAT dataset: data stored under <save path>/<name>', default='dataset') ),
+    ('mat_transforms_path', bpy.props.StringProperty(name='Matrix Transforms Path', description='Path to the transforms_test.json file for matrix camera rendering', subtype='FILE_PATH') ),
     ('mat_nb_frames', bpy.props.IntProperty(name='Matrix Frames', description='Number of training frames from matrix') ),
 
     # cos automatic properties

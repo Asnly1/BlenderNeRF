@@ -202,8 +202,13 @@ def upd_on():
 @persistent
 def post_render(scene):
     if any(scene.rendering): # execute this function only when rendering with addon
-        dataset_names = (scene.sof_dataset_name, scene.ttc_dataset_name, scene.cos_dataset_name)
-        method_dataset_name = dataset_names[ list(scene.rendering).index(True) ]
+        dataset_names = (
+            scene.sof_dataset_name,
+            scene.ttc_dataset_name,
+            scene.cos_dataset_name,
+            scene.mat_dataset_name
+        )
+        method_dataset_name = dataset_names[list(scene.rendering).index(True)]
 
         if scene.rendering[0]: scene.frame_step = scene.init_frame_step # sof : reset frame step
 
@@ -225,7 +230,11 @@ def post_render(scene):
             scene.use_nodes = False
             scene.node_tree.nodes.clear()
 
-        scene.rendering = (False, False, False)
+        if scene.rendering[3]: # mat : reset camera reference only
+            scene.camera = scene.init_active_camera
+            scene.frame_end = scene.init_frame_end
+
+        scene.rendering = (False, False, False, False)
         scene.render.filepath = scene.init_output_path # reset filepath
 
         # clean directory name (unsupported characters replaced) and output path
