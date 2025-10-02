@@ -1,55 +1,137 @@
 import os
 import shutil
-import bpy
-from . import helper, blender_nerf_operator
 import json
-
+import bpy
+import mathutils
+from . import helper, blender_nerf_operator
 
 # global addon script variables
 EMPTY_NAME = 'BlenderNeRF Sphere'
 CAMERA_NAME = 'BlenderNeRF Camera'
 
-# Camera-on-sphere operator class
-class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
-    '''Camera on Sphere Operator'''
-    bl_idname = 'object.camera_on_sphere'
-    bl_label = 'Camera on Sphere COS'
 
-    def load_existing_transforms_data(self, file_path):
-        """Read extrinsic matrices stored in an existing transforms file."""
+class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
+    '''Matrix Camera Render Operator'''
+    bl_idname = 'object.matrix_camera_render'
+    bl_label = 'Matrix Camera Render'
+
+    def load_transforms_data(self, scene):
+        """Load transform metadata from the path defined on the scene."""
+        transforms_path = getattr(scene, 'matrix_transforms_path', '')
+
+        if not transforms_path:
+            self.report({'ERROR'}, 'Matrix transforms path not set!')
+            return False
+
+        if not os.path.exists(transforms_path):
+            self.report({'ERROR'}, f'Transforms file not found: {transforms_path}')
+            return False
+
         try:
-            if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                    return data.get('frames', [])
-            return None
-        except Exception as e:
-            return None
+            with open(transforms_path, 'r') as file_handle:
+                self.transforms_data = json.load(file_handle)
+
+            frames_count = len(self.transforms_data.get('frames', []))
+            self.mat_nb_frames = frames_count
+            return True
+
+        except json.JSONDecodeError as exc:
+            self.report({'ERROR'}, f'JSON parsing error: {exc}')
+            return False
+        except Exception as exc:
+            self.report({'ERROR'}, f'Error loading transforms file: {exc}')
+            return False
+
+    def apply_camera_intrinsics(self, scene, camera, transforms_data):
+        """Update the Blender camera intrinsics using values from transforms data."""
+        if not transforms_data:
+            self.report({'WARNING'}, 'Transforms data not loaded.')
+            return False
+
+        try:
+            camera_angle_x = transforms_data.get('camera_angle_x', camera.data.angle_x)
+            camera_angle_y = transforms_data.get('camera_angle_y', camera.data.angle_y)
+            fl_x = transforms_data.get('fl_x')
+            w = transforms_data.get('w')
+
+            if fl_x and w:
+                focal_length_mm = (fl_x * 36) / w  # Assume a 36 mm reference sensor width.
+                camera.data.lens = focal_length_mm
+            scene.render.resolution_x = int(transforms_data.get('w', scene.render.resolution_x))
+            scene.render.resolution_y = int(transforms_data.get('h', scene.render.resolution_y))
+            camera.data.angle_x = camera_angle_x
+            camera.data.angle_y = camera_angle_y
+            
+            return True
+
+        except Exception as exc:
+            self.report({'ERROR'}, f'Error applying camera intrinsics: {exc}')
+            return False
+
+    def transforms_camera_update(self, scene, frame_index):
+        """Apply the transform matrix at the given frame index to the helper camera."""
+        if not hasattr(self, 'transforms_data') or not self.transforms_data:
+            return False
+
+        try:
+            frames = self.transforms_data.get('frames', [])
+            if frame_index >= len(frames):
+                return False
+
+            frame_data = frames[frame_index]
+            transform_matrix = frame_data.get('transform_matrix')
+
+            if not transform_matrix:
+                return False
+
+            matrix = mathutils.Matrix(transform_matrix)
+
+            if CAMERA_NAME in scene.objects:
+                camera_obj = scene.objects[CAMERA_NAME]
+                camera_obj.matrix_world = matrix
+                return True
+
+            return False
+
+        except Exception as exc:
+            return False
+
+    def create_frame_change_handler(self):
+        """Generate a frame-change handler that syncs camera transforms per frame."""
+        operator_ref = self
+
+        def frame_change_handler(scene, depsgraph):  # unused depsgraph argument is mandated by Blender
+            frame_index = scene.frame_current - scene.frame_start
+            operator_ref.transforms_camera_update(scene, frame_index)
+
+        return frame_change_handler
 
     def execute(self, context):
         scene = context.scene
         camera = scene.camera
 
-        # check if camera is selected : next errors depend on an existing camera
-        if camera == None:
+        if camera is None:
             self.report({'ERROR'}, 'Be sure to have a selected camera!')
             return {'FINISHED'}
 
-        # if there is an error, print first error message
-        error_messages = self.asserts(scene, method='COS')
-        if len(error_messages) > 0:
+        error_messages = self.asserts(scene, method='MAT')
+        if error_messages:
             self.report({'ERROR'}, error_messages[0])
+            return {'FINISHED'}
+
+        if not self.load_transforms_data(scene):
             return {'FINISHED'}
 
         output_data = self.get_camera_intrinsics(scene, camera)
 
-        # clean directory name (unsupported characters replaced) and output path
         output_dir = bpy.path.clean_name(scene.cos_dataset_name)
         output_path = os.path.join(scene.save_path, output_dir)
         os.makedirs(output_path, exist_ok=True)
-
-        if scene.logs: self.save_log_file(scene, output_path, method='COS')
-        if scene.splats: self.save_splats_ply(scene, output_path)
+        
+        if scene.logs: 
+            self.save_log_file(scene, output_path, camera, method='MAT')
+        if scene.splats: 
+            self.save_splats_ply(scene, output_path)
 
         # initial property might have changed since set_init_props update
         scene.init_output_path = scene.render.filepath
@@ -60,64 +142,77 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
         scene.init_frame_end = scene.frame_end
         scene.init_active_camera = camera
 
+        global_handler_disabled = False
+
         if scene.test_data:
-            # Attempt to load extrinsics from an existing transforms_test.json.
-            test_json = getattr(scene, 'matrix_transforms_path', '')
-            existing_frames = self.load_existing_transforms_data(test_json)
-            
-            if existing_frames:
+            if hasattr(self, 'transforms_data') and self.transforms_data:
                 output_data['frames'] = []
-                for index, frame_data in enumerate(existing_frames.get('frames', [])):
+                for index, frame_data in enumerate(self.transforms_data.get('frames', [])):
                     frame_info = {
-                        'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
+                        'file_path': os.path.join('train', f'frame_{index + 1:05d}.png'),
                         'transform_matrix': frame_data.get('transform_matrix', [])
                     }
                     output_data['frames'].append(frame_info)
             else:
-                # Fallback to generating extrinsics within Blender if no cache is found.
-                output_data['frames'] = self.get_camera_extrinsics(scene, camera, mode='TEST', method='COS')
-            
+                output_data['frames'] = self.get_camera_extrinsics(scene, camera, mode='TEST', method='MAT')
+
             self.save_json(output_path, 'transforms_test.json', output_data)
 
         if scene.train_data:
-            if not scene.show_camera: scene.show_camera = True
+            if not scene.show_camera:
+                scene.show_camera = True
 
-            # train camera on sphere
             sphere_camera = scene.objects[CAMERA_NAME]
             sphere_output_data = self.get_camera_intrinsics(scene, sphere_camera)
             scene.camera = sphere_camera
 
-            # training transforms
-            sphere_output_data['frames'] = self.get_camera_extrinsics(scene, sphere_camera, mode='TRAIN', method='COS')
+            if not self.apply_camera_intrinsics(scene, sphere_camera, getattr(self, 'transforms_data', {})):
+                self.report({'WARNING'}, 'Failed to apply camera intrinsics from transforms data.')
+
+            frames = getattr(self, 'transforms_data', {}).get('frames', [])
+            frames_count = len(frames)
+            scene.mat_nb_frames = frames_count
+            scene.frame_end = scene.frame_start + max(frames_count - 1, 0)
+
+            sphere_output_data['frames'] = []
+            for index, frame_data in enumerate(frames):
+                frame_info = {
+                    'file_path': os.path.join('train', f'frame_{index + 1:05d}.png'),
+                    'transform_matrix': frame_data.get('transform_matrix', [])
+                }
+                sphere_output_data['frames'].append(frame_info)
+
             self.save_json(output_path, 'transforms_train.json', sphere_output_data)
 
-            # rendering
             if scene.render_frames:
                 output_train = os.path.join(output_path, 'train')
                 os.makedirs(output_train, exist_ok=True)
                 scene.rendering = (False, False, True)
-                scene.frame_end = scene.frame_start + scene.cos_nb_frames - 1 # update end frame
+                scene.frame_end = scene.frame_start + max(scene.mat_nb_frames - 1, 0)
 
-                # Enable the compositor and clear existing nodes.
+                if frames:
+                    self.transforms_camera_update(scene, 0)
+
+                if helper.cos_camera_update in bpy.app.handlers.frame_change_post:
+                    bpy.app.handlers.frame_change_post.remove(helper.cos_camera_update)
+                    global_handler_disabled = True
+
                 scene.render.use_compositing = True
                 scene.render.use_sequencer = False
                 scene.use_nodes = True
                 tree = scene.node_tree
                 nodes = tree.nodes
                 nodes.clear()
-                
-                # Add the render layer node for the current scene.
+
                 rl_node = nodes.new('CompositorNodeRLayers')
                 rl_node.scene = scene
 
-                # Create a file output node for RGB exports.
                 rgb_output_node = nodes.new('CompositorNodeOutputFile')
                 rgb_output_node.base_path = os.path.join(output_train, '')
-                rgb_output_node.file_slots[0].path = "frame_#####"
-                
-                # Route the output into the RGB file sequence.
+                rgb_output_node.file_slots[0].path = 'frame_#####'
+
                 tree.links.new(rl_node.outputs['Image'], rgb_output_node.inputs[0])
-                
+
                 if scene.render_mask:
                     mask_output_train = os.path.join(output_path, 'mask')
                     os.makedirs(mask_output_train, exist_ok=True)
@@ -218,12 +313,23 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
                     normal_exr_node.format.color_mode = 'RGB'
                     tree.links.new(rl_node.outputs['Normal'], normal_exr_node.inputs[0])
 
-                bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True) # render scene
+                frame_change_handler = self.create_frame_change_handler()
+                bpy.app.handlers.frame_change_pre.append(frame_change_handler)
+
+                bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True)
+
+                if frame_change_handler in bpy.app.handlers.frame_change_pre:
+                    bpy.app.handlers.frame_change_pre.remove(frame_change_handler)
+
+                if global_handler_disabled and helper.cos_camera_update not in bpy.app.handlers.frame_change_post:
+                    bpy.app.handlers.frame_change_post.append(helper.cos_camera_update)
+                global_handler_disabled = False
                 scene.rendering = (False, False, False)
 
-        # if frames are rendered, the below code is executed by the handler function
         if not any(scene.rendering):
-            # reset camera settings
+            if global_handler_disabled and helper.cos_camera_update not in bpy.app.handlers.frame_change_post:
+                bpy.app.handlers.frame_change_post.append(helper.cos_camera_update)
+                
             if not scene.init_camera_exists: helper.delete_camera(scene, CAMERA_NAME)
             if not scene.init_sphere_exists:
                 objects = bpy.data.objects

@@ -105,6 +105,19 @@ def sample_from_sphere(scene):
 
     return point
 
+def update_multi_level_frames(self, context):
+    """Update the total frame count based on multi-level settings"""
+    scene = context.scene
+    if scene.use_multi_level and scene.horizontal_movement:
+        # 计算总帧数
+        total_frames = scene.frames_1 + scene.frames_2 + scene.frames_3
+        
+        # 更新frame_end
+        scene.frame_end = scene.frame_start + total_frames - 1
+        
+        # 关键修改：同时更新cos_nb_frames
+        scene.cos_nb_frames = total_frames
+
 ## two way property link between sphere and ui (property and handler functions)
 # https://blender.stackexchange.com/questions/261174/2-way-property-link-or-a-filtered-property-display
 
@@ -129,7 +142,8 @@ def properties_ui(self, context):
     if CAMERA_NAME in scene.objects.keys():
         upd_off()
         bpy.data.cameras[CAMERA_NAME].lens = scene.focal
-        bpy.context.scene.objects[CAMERA_NAME].constraints['Track To'].track_axis = 'TRACK_Z' if scene.outwards else 'TRACK_NEGATIVE_Z'
+        if 'Track To' in bpy.context.scene.objects[CAMERA_NAME].constraints:
+            bpy.context.scene.objects[CAMERA_NAME].constraints['Track To'].track_axis = 'TRACK_Z' if scene.outwards else 'TRACK_NEGATIVE_Z'
         upd_on()
 
 # if empty sphere modified outside of ui panel, edit panel properties
@@ -145,7 +159,8 @@ def properties_desgraph(scene):
     if scene.show_camera and CAMERA_NAME in scene.objects.keys():
         upd_off()
         scene.focal = bpy.data.cameras[CAMERA_NAME].lens
-        scene.outwards = (bpy.context.scene.objects[CAMERA_NAME].constraints['Track To'].track_axis == 'TRACK_Z')
+        if 'Track To' in bpy.context.scene.objects[CAMERA_NAME].constraints:
+            scene.outwards = (bpy.context.scene.objects[CAMERA_NAME].constraints['Track To'].track_axis == 'TRACK_Z')
         upd_on()
 
     if EMPTY_NAME not in scene.objects.keys() and scene.sphere_exists:
@@ -206,6 +221,10 @@ def post_render(scene):
             scene.camera = scene.init_active_camera
             scene.frame_end = scene.init_frame_end
 
+            # clean nodes
+            scene.use_nodes = False
+            scene.node_tree.nodes.clear()
+
         scene.rendering = (False, False, False)
         scene.render.filepath = scene.init_output_path # reset filepath
 
@@ -230,8 +249,163 @@ def set_init_props(scene):
 
     bpy.app.handlers.depsgraph_update_post.remove(set_init_props)
 
-# update cos camera when changing frame
+# Function to calculate a point on the sphere at a specific z-level and angle
+def calculate_horizontal_point(scene, z_level, angle_degrees):
+    # Convert angle from degrees to radians
+    angle_radians = math.radians(angle_degrees)
+    
+    # Get sphere parameters
+    r = scene.sphere_radius
+    
+    # Calculate z-coordinate based on z_level (-1.0 to 1.0)
+    z = z_level * r
+    
+    # Calculate the radius at this z-level using the circle-sphere intersection formula
+    # For a sphere of radius r at z-level, the radius of the circle is sqrt(r^2 - z^2)
+    if abs(z) > r:
+        # If z is outside the sphere, clamp it to the sphere boundary
+        z = r if z > 0 else -r
+        horizontal_radius = 0
+    else:
+        horizontal_radius = math.sqrt(r**2 - z**2)
+    
+    # Calculate x and y coordinates based on the angle
+    x = horizontal_radius * math.cos(angle_radians)
+    y = horizontal_radius * math.sin(angle_radians)
+    
+    # Apply scaling
+    scale = mathutils.Vector(scene.sphere_scale)
+    scaled_point = mathutils.Vector((
+        scale[0] * x,
+        scale[1] * y,
+        scale[2] * z
+    ))
+    
+    # Apply rotation
+    rotation = mathutils.Euler(scene.sphere_rotation).to_matrix()
+    rotated_point = rotation @ scaled_point
+    
+    # Apply translation
+    final_point = mathutils.Vector(scene.sphere_location) + rotated_point
+    
+    return final_point
+
+# Update the cos_camera_update function to include horizontal movement
 @persistent
 def cos_camera_update(scene):
+    """Update camera position based on frame, either sequentially (spiral), randomly (sphere), or horizontally with multiple z-levels."""
     if CAMERA_NAME in scene.objects.keys():
-        scene.objects[CAMERA_NAME].location = sample_from_sphere(scene)
+        if scene.render_sequential:
+            # Existing spiral path logic
+            frame = scene.frame_current
+            total_frames = scene.cos_nb_frames
+            
+            # 定义螺旋参数
+            r = scene.sphere_radius  # 使用 sphere_radius 作为终止高度
+            omega = 2.0  # 旋转速度
+            
+            # 计算 θ，范围 [0, π]
+            theta = (math.pi * frame) / total_frames
+            
+            # 计算半径，保持在0.67r到1.0r之间，使其始终在中间1/3的球面上
+            # sin(theta)的范围是0到1，这里我们把它映射到0.67到1.0之间
+            radius_factor = 0.67 + 0.33 * math.sin(theta)
+            radius = radius_factor * r
+            
+            # 使用lowest_level和highest_level来计算高度范围
+            # 将theta从[0, π]映射到[lowest_level, highest_level]
+            z_min = scene.lowest_level * r
+            z_max = scene.highest_level * r
+            z_range = z_max - z_min
+            
+            # 计算高度
+            if scene.upper_views:  # 如果只需要上半部分视角
+                # 映射到[0, z_max]或指定范围的上半部分
+                z = z_min + z_range * (theta / math.pi)
+            else:
+                # 在整个指定范围内映射
+                z = z_min + z_range * (theta / math.pi)
+            # 计算旋转角度
+            phi = omega * theta
+            
+            # 计算基础螺旋坐标
+            x = radius * math.cos(phi)
+            y = radius * math.sin(phi)
+            
+            # 应用缩放变换
+            scale = mathutils.Vector(scene.sphere_scale)
+            scaled_point = mathutils.Vector((
+                scale[0] * x,
+                scale[1] * y,
+                scale[2] * z
+            ))
+            
+            # 应用旋转变换
+            rotation = mathutils.Euler(scene.sphere_rotation).to_matrix()
+            rotated_point = rotation @ scaled_point
+            
+            # 应用平移变换
+            final_point = mathutils.Vector(scene.sphere_location) + rotated_point
+            
+            # 更新相机位置
+            scene.objects[CAMERA_NAME].location = final_point
+            
+            # 确保相机朝向场景中心
+            center = mathutils.Vector(scene.sphere_location)
+            direction = center - final_point
+            # 计算旋转四元数
+            rot_quat = direction.to_track_quat('-Z', 'Y')
+            scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
+        elif scene.render_sequential and scene.horizontal_movement:
+            # Get current frame (relative to start frame)
+            rel_frame = scene.frame_current - scene.frame_start
+            
+            if scene.use_multi_level:
+                # Determine which z-level to use based on frame count
+                if rel_frame < scene.frames_1:
+                    # First z-level
+                    current_z_level = scene.z_level_1
+                    level_start = 0
+                    level_frames = scene.frames_1
+                elif rel_frame < scene.frames_1 + scene.frames_2:
+                    # Second z-level
+                    current_z_level = scene.z_level_2
+                    level_start = scene.frames_1
+                    level_frames = scene.frames_2
+                else:
+                    # Third z-level
+                    current_z_level = scene.z_level_3
+                    level_start = scene.frames_1 + scene.frames_2
+                    level_frames = scene.frames_3
+                
+                # Calculate relative frame within this level
+                level_rel_frame = rel_frame - level_start
+                
+                # Calculate angle for this level (0-360 degrees for each level)
+                angle = (360.0 * level_rel_frame) / level_frames
+            else:
+                # Original single z-level logic
+                current_z_level = scene.z_level
+                angle = (360.0 * rel_frame) / scene.cos_nb_frames
+            
+            # Calculate position on sphere at specified z-level and angle
+            position = calculate_horizontal_point(scene, current_z_level, angle)
+            
+            # Update camera position
+            scene.objects[CAMERA_NAME].location = position
+            
+            # Make camera look at center of sphere
+            center = mathutils.Vector(scene.sphere_location)
+            direction = center - position
+            
+            # Set camera rotation
+            if scene.outwards:
+                # If outwards is enabled, flip the direction
+                direction = -direction
+            
+            # Calculate rotation quaternion
+            rot_quat = direction.to_track_quat('-Z', 'Y')
+            scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
+        else:
+            # 原有的球面随机采样逻辑
+            scene.objects[CAMERA_NAME].location = sample_from_sphere(scene)

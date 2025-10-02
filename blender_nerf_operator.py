@@ -3,6 +3,9 @@ import math
 import json
 import datetime
 import bpy
+import random
+import mathutils
+from mathutils import Vector, Matrix
 
 
 # global addon script variables
@@ -78,12 +81,14 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             'aabb_scale': scene.aabb
         }
 
+        if scene.log_intrinsic:
+            return camera_intr_dict
         return {'camera_angle_x': camera_angle_x} if scene.nerf else camera_intr_dict
 
     # camera extrinsics (transform matrices)
     def get_camera_extrinsics(self, scene, camera, mode='TRAIN', method='SOF'):
         assert mode == 'TRAIN' or mode == 'TEST'
-        assert method == 'SOF' or method == 'TTC' or method == 'COS'
+        assert method == 'SOF' or method == 'TTC' or method == 'COS' or method == 'MAT'
 
         if scene.splats and scene.splats_test_dummy and mode == 'TEST':
             return []
@@ -94,6 +99,8 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             end = scene.frame_start + scene.cos_nb_frames - 1
         elif (mode == 'TRAIN' and method == 'TTC'):
             end = scene.frame_start + scene.ttc_nb_frames - 1
+        elif (mode == 'TRAIN' and method == 'MAT'):
+            end = scene.frame_start + scene.mat_nb_frames - 1
         else:
             end = scene.frame_end
 
@@ -103,8 +110,12 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             filename = os.path.basename( scene.render.frame_path(frame=frame) )
             filedir = OUTPUT_TRAIN * (mode == 'TRAIN') + OUTPUT_TEST * (mode == 'TEST')
 
+            # 提取帧号并格式化为frame_00001格式
+            frame_number = frame - scene.frame_start + 1
+            frame_filename = f"frame_{frame_number:05d}"
+
             frame_data = {
-                'file_path': os.path.join(filedir, os.path.splitext(filename)[0] if scene.splats else filename),
+                'file_path': os.path.join(filedir, frame_filename),
                 'transform_matrix': self.listify_matrix(camera.matrix_world)
             }
 
@@ -184,7 +195,7 @@ class BlenderNeRF_Operator(bpy.types.Operator):
 
     # assert messages
     def asserts(self, scene, method='SOF'):
-        assert method == 'SOF' or method == 'TTC' or method == 'COS'
+        assert method == 'SOF' or method == 'TTC' or method == 'COS' or method == 'MAT'
 
         camera = scene.camera
         train_camera = scene.camera_train_target
@@ -227,8 +238,8 @@ class BlenderNeRF_Operator(bpy.types.Operator):
 
         return error_messages
 
-    def save_log_file(self, scene, directory, method='SOF'):
-        assert method == 'SOF' or method == 'TTC' or method == 'COS'
+    def save_log_file(self, scene, directory, camera, method='SOF'):
+        assert method == 'SOF' or method == 'TTC' or method == 'COS' or method == 'MAT'
         now = datetime.datetime.now()
 
         logdata = {
@@ -266,5 +277,26 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             logdata['Upper Views'] = scene.upper_views
             logdata['Outwards'] = scene.outwards
             logdata['Dataset Name'] = scene.cos_dataset_name
+        
+        if camera:
+            # 获取完整的相机内参信息
+            camera_intrinsics = self.get_camera_intrinsics(scene, camera)
+            
+            # 添加到日志数据中
+            logdata['Camera Intrinsics'] = {
+                'Camera Angle X': camera_intrinsics.get('camera_angle_x', 0),
+                'Camera Angle Y': camera_intrinsics.get('camera_angle_y', 0),
+                'Focal Length X': camera_intrinsics.get('fl_x', 0),
+                'Focal Length Y': camera_intrinsics.get('fl_y', 0),
+                'Optical Center X': camera_intrinsics.get('cx', 0),
+                'Optical Center Y': camera_intrinsics.get('cy', 0),
+                'Width': camera_intrinsics.get('w', 0),
+                'Height': camera_intrinsics.get('h', 0),
+                'Distortion K1': camera_intrinsics.get('k1', 0),
+                'Distortion K2': camera_intrinsics.get('k2', 0),
+                'Distortion P1': camera_intrinsics.get('p1', 0),
+                'Distortion P2': camera_intrinsics.get('p2', 0),
+                'AABB Scale': camera_intrinsics.get('aabb_scale', 1)
+            }
 
         self.save_json(directory, filename='log.txt', data=logdata)

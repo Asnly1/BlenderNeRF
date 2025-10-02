@@ -1,5 +1,5 @@
 import bpy
-from . import helper, blender_nerf_ui, sof_ui, ttc_ui, cos_ui, sof_operator, ttc_operator, cos_operator
+from . import helper, blender_nerf_ui, sof_ui, ttc_ui, cos_ui, sof_operator, ttc_operator, cos_operator, matrix_operator
 
 
 # blender info
@@ -27,6 +27,7 @@ PROPS = [
     ('aabb', bpy.props.IntProperty(name='AABB', description='AABB scale as defined in Instant NGP', default=4, soft_min=1, soft_max=128) ),
     ('render_frames', bpy.props.BoolProperty(name='Render Frames', description='Whether training frames should be rendered. If not selected, only the transforms.json files will be generated', default=True) ),
     ('logs', bpy.props.BoolProperty(name='Save Log File', description='Whether to create a log file containing information on the BlenderNeRF run', default=False) ),
+    ('log_intrinsic', bpy.props.BoolProperty(name='Log Intrinsic Matrix', description='Whether to create a log file with camera\'s intrinsic matrix', default=True) ), 
     ('splats', bpy.props.BoolProperty(name='Gaussian Points', description='Whether to export a points3d.ply file for Gaussian Splatting', default=False) ),
     ('splats_test_dummy', bpy.props.BoolProperty(name='Dummy Test Camera', description='Whether to export a dummy test transforms.json file or the full set of test camera poses', default=True) ),
     ('nerf', bpy.props.BoolProperty(name='NeRF', description='Whether to export the camera transforms.json files in the defaut NeRF file format convention', default=False) ),
@@ -61,6 +62,27 @@ PROPS = [
     ('show_camera', bpy.props.BoolProperty(name='Camera', description='Whether to show the training camera', default=False, update=helper.visualize_camera) ),
     ('upper_views', bpy.props.BoolProperty(name='Upper Views', description='Whether to sample views from the upper hemisphere of the training sphere only', default=False) ),
     ('outwards', bpy.props.BoolProperty(name='Outwards', description='Whether to point the camera outwards of the training sphere', default=False, update=helper.properties_ui_upd) ),
+    ('render_mask', bpy.props.BoolProperty(name='Render Mask', description='Render mask maps alongside RGB images', default=False) ),
+    ('render_depth', bpy.props.BoolProperty(name='Render Depth', description='Render depth maps alongside RGB images', default=False) ),
+    ('render_depth_exr', bpy.props.BoolProperty(name='Render Depth EXR', description='Render depth maps alongside RGB images saved in EXR', default=False) ),
+    ('render_normal', bpy.props.BoolProperty(name='Render Normal', description='Render Normal Maps', default=False) ),
+    ('render_normal_exr', bpy.props.BoolProperty(name='Render Normal EXR', description='Render normal maps alongside RGB images saved in EXR', default=False) ),
+    ('render_sequential', bpy.props.BoolProperty(name='Render Sequential', description='Render using a spiral path', default=False) ),
+    ('lowest_level', bpy.props.FloatProperty(name='Low Level', description='Lowest level of sphere of render', default=-1.0) ),
+    ('highest_level', bpy.props.FloatProperty(name='High Level', description='Highest level of sphere of render', default=1.0) ),
+    ('horizontal_movement', bpy.props.BoolProperty(name='Horizontal Movement', description='Move the camera horizontally on the sphere at a specified z-level', default=False, update=helper.properties_ui_upd) ),
+    ('z_level', bpy.props.FloatProperty(name='Z Level', description='Z level as a fraction of radius (-1.0 to 1.0)', default=0.0, min=-1.0, max=1.0, update=helper.properties_ui_upd) ),
+    ('use_multi_level', bpy.props.BoolProperty(name='Use Multiple Z-Levels', description='Enable rendering at multiple z-levels', default=False, update=helper.update_multi_level_frames) ),
+    ('z_level_1', bpy.props.FloatProperty(name='Z Level 1', description='First z-level as a fraction of radius (-1.0 to 1.0)', default=-0.7, min=-1.0, max=1.0, update=helper.properties_ui_upd) ),
+    ('frames_1', bpy.props.IntProperty(name='Frames 1', description='Number of frames at first z-level', default=6, soft_min=1, update=helper.update_multi_level_frames) ),
+    ('z_level_2', bpy.props.FloatProperty(name='Z Level 2', description='Second z-level as a fraction of radius (-1.0 to 1.0)', default=0.2, min=-1.0, max=1.0, update=helper.properties_ui_upd) ),
+    ('frames_2', bpy.props.IntProperty(name='Frames 2', description='Number of frames at second z-level', default=8, soft_min=1, update=helper.update_multi_level_frames) ),
+    ('z_level_3', bpy.props.FloatProperty(name='Z Level 3', description='Third z-level as a fraction of radius (-1.0 to 1.0)', default=0.7, min=-1.0, max=1.0, update=helper.properties_ui_upd) ),
+    ('frames_3', bpy.props.IntProperty(name='Frames 3', description='Number of frames at third z-level', default=6, soft_min=1, update=helper.update_multi_level_frames) ),
+
+    # matrix camera render properties
+    ('matrix_transforms_path', bpy.props.StringProperty(name='Matrix Transforms Path', description='Path to the transforms_test.json file for matrix camera rendering', subtype='FILE_PATH') ),
+    ('mat_nb_frames', bpy.props.IntProperty(name='Matrix Frames', description='Number of training frames from matrix') ),
 
     # cos automatic properties
     ('sphere_exists', bpy.props.BoolProperty(name='Sphere Exists', description='Whether the sphere exists', default=False) ),
@@ -79,7 +101,8 @@ CLASSES = [
     cos_ui.COS_UI,
     sof_operator.SubsetOfFrames,
     ttc_operator.TrainTestCameras,
-    cos_operator.CameraOnSphere
+    cos_operator.CameraOnSphere,
+    matrix_operator.MatrixCameraRender,
 ]
 
 # load addon

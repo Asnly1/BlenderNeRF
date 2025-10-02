@@ -29,6 +29,30 @@ class COS_UI(bpy.types.Panel):
         layout.prop(scene, 'cos_nb_frames')
         layout.prop(scene, 'upper_views', toggle=True)
         layout.prop(scene, 'outwards', toggle=True)
+        layout.prop(scene, 'render_mask', toggle=True)
+        layout.prop(scene, 'render_depth', toggle=True)
+        layout.prop(scene, 'render_depth_exr', toggle=True)
+        layout.prop(scene, 'render_normal', toggle=True)
+        layout.prop(scene, 'render_normal_exr', toggle=True)
+        layout.prop(scene, 'render_sequential', toggle=True)
+        if scene.render_sequential:
+            layout.prop(scene, 'horizontal_movement', toggle=True)
+            
+        if not scene.horizontal_movement:
+            layout.prop(scene, 'lowest_level')
+            layout.prop(scene, 'highest_level')
+        
+        if scene.horizontal_movement:
+            layout.prop(scene, 'z_level')
+                
+            layout.prop(scene, 'use_multi_level', toggle=True)
+            if scene.use_multi_level:
+                layout.prop(scene, 'z_level_1')
+                layout.prop(scene, 'frames_1')
+                layout.prop(scene, 'z_level_2')
+                layout.prop(scene, 'frames_2')                
+                layout.prop(scene, 'z_level_3')
+                layout.prop(scene, 'frames_3')
 
         layout.use_property_split = False
         layout.separator()
