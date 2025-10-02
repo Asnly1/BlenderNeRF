@@ -32,7 +32,7 @@ class SubsetOfFrames(blender_nerf_operator.BlenderNeRF_Operator):
         output_path = os.path.join(scene.save_path, output_dir)
         os.makedirs(output_path, exist_ok=True)
 
-        if scene.logs: self.save_log_file(scene, output_path, method='SOF')
+        if scene.logs: self.save_log_file(scene, output_path, camera, method='SOF')
         if scene.splats: self.save_splats_ply(scene, output_path)
 
         # initial properties might have changed since set_init_props update
@@ -40,8 +40,22 @@ class SubsetOfFrames(blender_nerf_operator.BlenderNeRF_Operator):
         scene.init_output_path = scene.render.filepath
 
         if scene.test_data:
-            # testing transforms
-            output_data['frames'] = self.get_camera_extrinsics(scene, camera, mode='TEST', method='SOF')
+            # Attempt to load extrinsics from an existing transforms_test.json.
+            test_json = getattr(scene, 'mat_transforms_path', '')
+            existing_frames = self.load_existing_transforms_data(test_json)
+            
+            if existing_frames:
+                output_data['frames'] = []
+                for index, frame_data in enumerate(existing_frames.get('frames', [])):
+                    frame_info = {
+                        'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
+                        'transform_matrix': frame_data.get('transform_matrix', [])
+                    }
+                    output_data['frames'].append(frame_info)
+            else:
+                # Fallback to generating extrinsics within Blender if no cache is found.
+                output_data['frames'] = self.get_camera_extrinsics(scene, camera, mode='TEST', method='COS')
+            
             self.save_json(output_path, 'transforms_test.json', output_data)
 
         if scene.train_data:

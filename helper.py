@@ -11,6 +11,9 @@ from bpy.app.handlers import persistent
 EMPTY_NAME = 'BlenderNeRF Sphere'
 CAMERA_NAME = 'BlenderNeRF Camera'
 
+_matrix_frame_handler = None
+_matrix_handler_scene = None
+
 ## property poll and update functions
 
 # camera pointer property poll function
@@ -104,6 +107,44 @@ def sample_from_sphere(scene):
     point = mathutils.Vector(scene.sphere_location) + rotation @ point
 
     return point
+
+
+def register_matrix_handler(scene, update_callback):
+    """Register a frame-change handler that replays matrix transforms for matrix renders."""
+    global _matrix_frame_handler, _matrix_handler_scene
+
+    unregister_matrix_handler()
+
+    _matrix_handler_scene = scene
+
+    def _matrix_frame_change(frame_scene, depsgraph):
+        if frame_scene != _matrix_handler_scene:
+            return
+
+        frame_index = frame_scene.frame_current - frame_scene.frame_start
+        try:
+            update_callback(frame_scene, frame_index)
+        except Exception as exc:
+            print(f"Matrix handler error: {exc}")
+
+    _matrix_frame_handler = _matrix_frame_change
+    bpy.app.handlers.frame_change_pre.append(_matrix_frame_change)
+    if cos_camera_update in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.remove(cos_camera_update)
+
+
+def unregister_matrix_handler():
+    """Remove any registered matrix frame-change handler."""
+    global _matrix_frame_handler, _matrix_handler_scene
+
+    if _matrix_frame_handler and _matrix_frame_handler in bpy.app.handlers.frame_change_pre:
+        bpy.app.handlers.frame_change_pre.remove(_matrix_frame_handler)
+
+    _matrix_frame_handler = None
+    _matrix_handler_scene = None
+    if cos_camera_update not in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.append(cos_camera_update)
+
 
 def update_multi_level_frames(self, context):
     """Update the total frame count based on multi-level settings"""

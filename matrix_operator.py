@@ -96,16 +96,6 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
         except Exception as exc:
             return False
 
-    def create_frame_change_handler(self):
-        """Generate a frame-change handler that syncs camera transforms per frame."""
-        operator_ref = self
-
-        def frame_change_handler(scene, depsgraph):  # unused depsgraph argument is mandated by Blender
-            frame_index = scene.frame_current - scene.frame_start
-            operator_ref.transforms_camera_update(scene, frame_index)
-
-        return frame_change_handler
-
     def execute(self, context):
         scene = context.scene
         camera = scene.camera
@@ -141,8 +131,6 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
         scene.init_camera_exists = scene.show_camera
         scene.init_frame_end = scene.frame_end
         scene.init_active_camera = camera
-
-        global_handler_disabled = False
 
         if scene.test_data:
             if hasattr(self, 'transforms_data') and self.transforms_data:
@@ -193,9 +181,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                 if frames:
                     self.transforms_camera_update(scene, 0)
 
-                if helper.cos_camera_update in bpy.app.handlers.frame_change_post:
-                    bpy.app.handlers.frame_change_post.remove(helper.cos_camera_update)
-                    global_handler_disabled = True
+                helper.register_matrix_handler(scene, self.transforms_camera_update)
 
                 scene.render.use_compositing = True
                 scene.render.use_sequencer = False
@@ -313,23 +299,14 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                     normal_exr_node.format.color_mode = 'RGB'
                     tree.links.new(rl_node.outputs['Normal'], normal_exr_node.inputs[0])
 
-                frame_change_handler = self.create_frame_change_handler()
-                bpy.app.handlers.frame_change_pre.append(frame_change_handler)
-
                 bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True)
 
-                if frame_change_handler in bpy.app.handlers.frame_change_pre:
-                    bpy.app.handlers.frame_change_pre.remove(frame_change_handler)
-
-                if global_handler_disabled and helper.cos_camera_update not in bpy.app.handlers.frame_change_post:
-                    bpy.app.handlers.frame_change_post.append(helper.cos_camera_update)
-                global_handler_disabled = False
+                helper.unregister_matrix_handler()
                 scene.rendering = (False, False, False, False)
 
         if not any(scene.rendering):
-            if global_handler_disabled and helper.cos_camera_update not in bpy.app.handlers.frame_change_post:
-                bpy.app.handlers.frame_change_post.append(helper.cos_camera_update)
-                
+            helper.unregister_matrix_handler()
+
             if not scene.init_camera_exists: helper.delete_camera(scene, CAMERA_NAME)
             if not scene.init_sphere_exists:
                 objects = bpy.data.objects

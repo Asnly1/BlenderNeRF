@@ -48,7 +48,7 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
         output_path = os.path.join(scene.save_path, output_dir)
         os.makedirs(output_path, exist_ok=True)
 
-        if scene.logs: self.save_log_file(scene, output_path, method='COS')
+        if scene.logs: self.save_log_file(scene, output_path, camera, method='COS')
         if scene.splats: self.save_splats_ply(scene, output_path)
 
         # initial property might have changed since set_init_props update

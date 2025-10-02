@@ -1,5 +1,5 @@
 import bpy
-from . import helper, blender_nerf_ui, sof_ui, ttc_ui, cos_ui, sof_operator, ttc_operator, cos_operator, matrix_operator
+from . import helper, blender_nerf_ui, sof_ui, ttc_ui, cos_ui, mat_ui, sof_operator, ttc_operator, cos_operator, matrix_operator
 
 
 # blender info
@@ -100,6 +100,7 @@ CLASSES = [
     sof_ui.SOF_UI,
     ttc_ui.TTC_UI,
     cos_ui.COS_UI,
+    mat_ui.MAT_UI,
     sof_operator.SubsetOfFrames,
     ttc_operator.TrainTestCameras,
     cos_operator.CameraOnSphere,
