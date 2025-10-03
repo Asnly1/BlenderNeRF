@@ -62,6 +62,9 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
 
         if scene.test_data:
             test_json = getattr(scene, 'mat_transforms_path', '')
+            if not test_json:
+                self.report({'ERROR'}, 'Matrix transforms path not set!')
+                return {'FINISHED'}
             existing_frames = self.load_existing_transforms_data(test_json)
             
             if existing_frames:

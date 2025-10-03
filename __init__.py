@@ -83,7 +83,7 @@ PROPS = [
 
     # matrix camera render properties
     ('mat_dataset_name', bpy.props.StringProperty(name='Name', description='Name of the MAT dataset: data stored under <save path>/<name>', default='dataset') ),
-    ('mat_transforms_path', bpy.props.StringProperty(name='Matrix Transforms Path', description='Path to the transforms_test.json file for matrix camera rendering', subtype='FILE_PATH') ),
+    ('mat_transforms_path', bpy.props.StringProperty(name='Matrix Transforms Path', description='Path to the json file for matrix camera rendering', subtype='FILE_PATH') ),
     ('mat_nb_frames', bpy.props.IntProperty(name='Matrix Frames', description='Number of training frames from matrix') ),
 
     # cos automatic properties

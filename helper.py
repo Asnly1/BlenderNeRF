@@ -150,6 +150,8 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
     """Set up optional mask/depth/normal outputs based on scene toggles."""
     # Mask output
     if scene.render_mask:
+        # Activate Object Index
+        bpy.context.scene.render.engine = 'CYCLES'
         mask_output = os.path.join(output_root, 'mask')
         os.makedirs(mask_output, exist_ok=True)
 
