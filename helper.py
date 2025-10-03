@@ -249,13 +249,13 @@ def update_multi_level_frames(self, context):
     """Update the total frame count based on multi-level settings"""
     scene = context.scene
     if scene.use_multi_level and scene.horizontal_movement:
-        # 计算总帧数
+        # Aggregate the frame count across all requested z-levels.
         total_frames = scene.frames_1 + scene.frames_2 + scene.frames_3
-        
-        # 更新frame_end
+
+        # Extend the scene range to cover every requested frame.
         scene.frame_end = scene.frame_start + total_frames - 1
-        
-        # 关键修改：同时更新cos_nb_frames
+
+        # Keep cos_nb_frames in sync so sequential renders step correctly.
         scene.cos_nb_frames = total_frames
 
 ## two way property link between sphere and ui (property and handler functions)
@@ -447,43 +447,40 @@ def cos_camera_update(scene):
     """Update camera position based on frame, either sequentially (spiral), randomly (sphere), or horizontally with multiple z-levels."""
     if CAMERA_NAME in scene.objects.keys():
         if scene.render_sequential:
-            # Existing spiral path logic
+            # Spiral path logic for sequential rendering.
             frame = scene.frame_current
             total_frames = scene.cos_nb_frames
             
-            # 定义螺旋参数
-            r = scene.sphere_radius  # 使用 sphere_radius 作为终止高度
-            omega = 2.0  # 旋转速度
+            # Configure the spiral to sweep from pole to pole.
+            r = scene.sphere_radius  # Maximum radius reached at the equator.
+            omega = 2.0  # Angular velocity around the sphere.
             
-            # 计算 θ，范围 [0, π]
+            # Compute polar angle θ in the range [0, π].
             theta = (math.pi * frame) / total_frames
             
-            # 计算半径，保持在0.67r到1.0r之间，使其始终在中间1/3的球面上
-            # sin(theta)的范围是0到1，这里我们把它映射到0.67到1.0之间
+            # Keep the radius between 0.67r and r so the path stays mid-sphere.
+            # Map sin(theta) ∈ [0, 1] to the desired range.
             radius_factor = 0.67 + 0.33 * math.sin(theta)
             radius = radius_factor * r
             
-            # 使用lowest_level和highest_level来计算高度范围
-            # 将theta从[0, π]映射到[lowest_level, highest_level]
+            # Interpolate the height between the configured level bounds.
             z_min = scene.lowest_level * r
             z_max = scene.highest_level * r
             z_range = z_max - z_min
             
-            # 计算高度
-            if scene.upper_views:  # 如果只需要上半部分视角
-                # 映射到[0, z_max]或指定范围的上半部分
+            # Determine the current elevation.
+            if scene.upper_views:  # Restrict the sweep to the upper hemisphere.
                 z = z_min + z_range * (theta / math.pi)
             else:
-                # 在整个指定范围内映射
                 z = z_min + z_range * (theta / math.pi)
-            # 计算旋转角度
+            # Azimuthal angle around the sphere.
             phi = omega * theta
             
-            # 计算基础螺旋坐标
+            # Base spiral coordinates before scaling/rotation.
             x = radius * math.cos(phi)
             y = radius * math.sin(phi)
             
-            # 应用缩放变换
+            # Apply non-uniform scaling if needed.
             scale = mathutils.Vector(scene.sphere_scale)
             scaled_point = mathutils.Vector((
                 scale[0] * x,
@@ -491,20 +488,20 @@ def cos_camera_update(scene):
                 scale[2] * z
             ))
             
-            # 应用旋转变换
+            # Apply rotation defined on the helper sphere.
             rotation = mathutils.Euler(scene.sphere_rotation).to_matrix()
             rotated_point = rotation @ scaled_point
             
-            # 应用平移变换
+            # Translate into world space.
             final_point = mathutils.Vector(scene.sphere_location) + rotated_point
             
-            # 更新相机位置
+            # Update camera position for this frame.
             scene.objects[CAMERA_NAME].location = final_point
             
-            # 确保相机朝向场景中心
+            # Ensure the camera looks at the center of the sphere.
             center = mathutils.Vector(scene.sphere_location)
             direction = center - final_point
-            # 计算旋转四元数
+            # Derive orientation from the look-at direction.
             rot_quat = direction.to_track_quat('-Z', 'Y')
             scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
         elif scene.render_sequential and scene.horizontal_movement:
@@ -558,5 +555,5 @@ def cos_camera_update(scene):
             rot_quat = direction.to_track_quat('-Z', 'Y')
             scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
         else:
-            # 原有的球面随机采样逻辑
+            # Fallback to sampling uniformly across the sphere.
             scene.objects[CAMERA_NAME].location = sample_from_sphere(scene)

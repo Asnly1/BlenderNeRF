@@ -109,7 +109,7 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             scene.frame_set(frame)
             filedir = OUTPUT_TRAIN * (mode == 'TRAIN') + OUTPUT_TEST * (mode == 'TEST')
 
-            # 提取帧号并格式化为frame_00001格式
+            # Render file path using 1-based frame numbering to match output naming.
             frame_number = frame - scene.frame_start + 1
             frame_filename = f"frame_{frame_number:05d}"
 
@@ -296,10 +296,9 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             logdata['Dataset Name'] = scene.mat_dataset_name
 
         if camera:
-            # 获取完整的相机内参信息
+            # Persist full camera intrinsics for reference in the log file.
             camera_intrinsics = self.get_camera_intrinsics(scene, camera)
-            
-            # 添加到日志数据中
+
             logdata['Camera Intrinsics'] = {
                 'Camera Angle X': camera_intrinsics.get('camera_angle_x', 0),
                 'Camera Angle Y': camera_intrinsics.get('camera_angle_y', 0),
