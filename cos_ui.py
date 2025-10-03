@@ -29,11 +29,6 @@ class COS_UI(bpy.types.Panel):
         layout.prop(scene, 'cos_nb_frames')
         layout.prop(scene, 'upper_views', toggle=True)
         layout.prop(scene, 'outwards', toggle=True)
-        layout.prop(scene, 'render_mask', toggle=True)
-        layout.prop(scene, 'render_depth', toggle=True)
-        layout.prop(scene, 'render_depth_exr', toggle=True)
-        layout.prop(scene, 'render_normal', toggle=True)
-        layout.prop(scene, 'render_normal_exr', toggle=True)
         layout.prop(scene, 'render_sequential', toggle=True)
         if scene.render_sequential:
             layout.prop(scene, 'horizontal_movement', toggle=True)

@@ -27,6 +27,7 @@ PROPS = [
     ('aabb', bpy.props.IntProperty(name='AABB', description='AABB scale as defined in Instant NGP', default=4, soft_min=1, soft_max=128) ),
     ('render_frames', bpy.props.BoolProperty(name='Render Frames', description='Whether training frames should be rendered. If not selected, only the transforms.json files will be generated', default=True) ),
     ('logs', bpy.props.BoolProperty(name='Save Log File', description='Whether to create a log file containing information on the BlenderNeRF run', default=False) ),
+    ('compress_dataset', bpy.props.BoolProperty(name='Compress Dataset', description='Zip the generated dataset and remove the original directory after completion', default=True) ),
     ('log_intrinsic', bpy.props.BoolProperty(name='Log Intrinsic Matrix', description='Whether to create a log file with camera\'s intrinsic matrix', default=True) ), 
     ('splats', bpy.props.BoolProperty(name='Gaussian Points', description='Whether to export a points3d.ply file for Gaussian Splatting', default=False) ),
     ('splats_test_dummy', bpy.props.BoolProperty(name='Dummy Test Camera', description='Whether to export a dummy test transforms.json file or the full set of test camera poses', default=True) ),

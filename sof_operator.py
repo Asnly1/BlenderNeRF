@@ -1,7 +1,7 @@
 import os
 import shutil
 import bpy
-from . import blender_nerf_operator
+from . import blender_nerf_operator, helper
 
 
 # subset of frames operator class
@@ -68,14 +68,31 @@ class SubsetOfFrames(blender_nerf_operator.BlenderNeRF_Operator):
                 output_train = os.path.join(output_path, 'train')
                 os.makedirs(output_train, exist_ok=True)
                 scene.rendering = (True, False, False, False)
-                scene.frame_step = scene.train_frame_steps # update frame step
-                scene.render.filepath = os.path.join(output_train, '') # training frames path
-                bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True) # render scene
+                scene.frame_step = scene.train_frame_steps
+
+                scene.render.use_compositing = True
+                scene.render.use_sequencer = False
+                scene.use_nodes = True
+                tree = scene.node_tree
+                nodes = tree.nodes
+                nodes.clear()
+
+                rl_node = nodes.new('CompositorNodeRLayers')
+                rl_node.scene = scene
+
+                rgb_output_node = nodes.new('CompositorNodeOutputFile')
+                rgb_output_node.base_path = os.path.join(output_train, '')
+                rgb_output_node.file_slots[0].path = 'frame_#####'
+
+                tree.links.new(rl_node.outputs['Image'], rgb_output_node.inputs[0])
+                helper.configure_auxiliary_outputs(scene, tree, rl_node, output_path)
+
+                bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True)
 
         # if frames are rendered, the below code is executed by the handler function
         if not any(scene.rendering):
-            # compress dataset and remove folder (only keep zip)
-            shutil.make_archive(output_path, 'zip', output_path) # output filename = output_path
-            shutil.rmtree(output_path)
+            if scene.compress_dataset and os.path.isdir(output_path):
+                shutil.make_archive(output_path, 'zip', output_path)
+                shutil.rmtree(output_path)
 
         return {'FINISHED'}

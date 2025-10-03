@@ -146,6 +146,103 @@ def unregister_matrix_handler():
         bpy.app.handlers.frame_change_post.append(cos_camera_update)
 
 
+def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
+    """Set up optional mask/depth/normal outputs based on scene toggles."""
+    # Mask output
+    if scene.render_mask:
+        mask_output = os.path.join(output_root, 'mask')
+        os.makedirs(mask_output, exist_ok=True)
+
+        scene.view_layers['ViewLayer'].use_pass_object_index = True
+
+        for obj in bpy.data.objects:
+            obj.pass_index = 1
+
+        for helper_name in (EMPTY_NAME, CAMERA_NAME):
+            if helper_name in bpy.data.objects:
+                bpy.data.objects[helper_name].pass_index = 0
+
+        id_mask_node = tree.nodes.new('CompositorNodeIDMask')
+        id_mask_node.index = 1
+
+        mask_output_node = tree.nodes.new('CompositorNodeOutputFile')
+        mask_output_node.base_path = mask_output
+        mask_output_node.file_slots[0].path = 'frame_#####'
+        mask_output_node.format.file_format = 'PNG'
+        mask_output_node.format.color_depth = '8'
+        mask_output_node.format.color_mode = 'BW'
+
+        tree.links.new(rl_node.outputs['IndexOB'], id_mask_node.inputs[0])
+        tree.links.new(id_mask_node.outputs[0], mask_output_node.inputs[0])
+
+    # Depth PNG output
+    if scene.render_depth:
+        depth_output = os.path.join(output_root, 'depth')
+        os.makedirs(depth_output, exist_ok=True)
+
+        scene.view_layers['ViewLayer'].use_pass_z = True
+
+        depth_output_node = tree.nodes.new('CompositorNodeOutputFile')
+        depth_output_node.base_path = depth_output
+        depth_output_node.file_slots[0].path = 'frame_#####'
+        depth_output_node.format.file_format = 'PNG'
+        depth_output_node.format.color_depth = '16'
+        depth_output_node.format.color_mode = 'BW'
+
+        normalize_node = tree.nodes.new('CompositorNodeNormalize')
+
+        tree.links.new(rl_node.outputs['Depth'], normalize_node.inputs[0])
+        tree.links.new(normalize_node.outputs[0], depth_output_node.inputs[0])
+
+    # Depth EXR output
+    if scene.render_depth_exr:
+        depth_exr_output = os.path.join(output_root, 'depth_exr')
+        os.makedirs(depth_exr_output, exist_ok=True)
+
+        scene.view_layers['ViewLayer'].use_pass_z = True
+
+        depth_exr_node = tree.nodes.new('CompositorNodeOutputFile')
+        depth_exr_node.base_path = depth_exr_output
+        depth_exr_node.file_slots[0].path = 'frame_#####'
+        depth_exr_node.format.file_format = 'OPEN_EXR'
+        depth_exr_node.format.color_depth = '32'
+        depth_exr_node.format.color_mode = 'BW'
+
+        tree.links.new(rl_node.outputs['Depth'], depth_exr_node.inputs[0])
+
+    # Normal PNG output
+    if scene.render_normal:
+        normal_output = os.path.join(output_root, 'normal')
+        os.makedirs(normal_output, exist_ok=True)
+
+        scene.view_layers['ViewLayer'].use_pass_normal = True
+
+        normal_png_node = tree.nodes.new('CompositorNodeOutputFile')
+        normal_png_node.base_path = normal_output
+        normal_png_node.file_slots[0].path = 'frame_#####'
+        normal_png_node.format.file_format = 'PNG'
+        normal_png_node.format.color_depth = '8'
+        normal_png_node.format.color_mode = 'RGB'
+
+        tree.links.new(rl_node.outputs['Normal'], normal_png_node.inputs[0])
+
+    # Normal EXR output
+    if scene.render_normal_exr:
+        normal_exr_output = os.path.join(output_root, 'normal_exr')
+        os.makedirs(normal_exr_output, exist_ok=True)
+
+        scene.view_layers['ViewLayer'].use_pass_normal = True
+
+        normal_exr_node = tree.nodes.new('CompositorNodeOutputFile')
+        normal_exr_node.base_path = normal_exr_output
+        normal_exr_node.file_slots[0].path = 'frame_#####'
+        normal_exr_node.format.file_format = 'OPEN_EXR'
+        normal_exr_node.format.color_depth = '32'
+        normal_exr_node.format.color_mode = 'RGB'
+
+        tree.links.new(rl_node.outputs['Normal'], normal_exr_node.inputs[0])
+
+
 def update_multi_level_frames(self, context):
     """Update the total frame count based on multi-level settings"""
     scene = context.scene
@@ -267,13 +364,15 @@ def post_render(scene):
             scene.camera = scene.init_active_camera
             scene.frame_end = scene.init_frame_end
 
-            # clean nodes
-            scene.use_nodes = False
-            scene.node_tree.nodes.clear()
-
         if scene.rendering[3]: # mat : reset camera reference only
             scene.camera = scene.init_active_camera
             scene.frame_end = scene.init_frame_end
+            unregister_matrix_handler()
+
+        if scene.node_tree:
+            scene.node_tree.nodes.clear()
+        scene.use_nodes = False
+        scene.render.use_compositing = False
 
         scene.rendering = (False, False, False, False)
         scene.render.filepath = scene.init_output_path # reset filepath
@@ -282,9 +381,9 @@ def post_render(scene):
         output_dir = bpy.path.clean_name(method_dataset_name)
         output_path = os.path.join(scene.save_path, output_dir)
 
-        # compress dataset and remove folder (only keep zip)
-        shutil.make_archive(output_path, 'zip', output_path) # output filename = output_path
-        shutil.rmtree(output_path)
+        if scene.compress_dataset and os.path.isdir(output_path):
+            shutil.make_archive(output_path, 'zip', output_path) # output filename = output_path
+            shutil.rmtree(output_path)
 
 # set initial property values (bpy.data and bpy.context require a loaded scene)
 @persistent

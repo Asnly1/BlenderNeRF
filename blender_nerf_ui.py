@@ -29,6 +29,14 @@ class BlenderNeRF_UI(bpy.types.Panel):
             if scene.train_data:
                 layout.separator()
                 layout.prop(scene, 'render_frames')
+                if scene.render_frames:
+                    layout.prop(scene, 'render_mask')
+                    layout.prop(scene, 'render_depth')
+                    layout.prop(scene, 'render_depth_exr')
+                    layout.prop(scene, 'render_normal')
+                    layout.prop(scene, 'render_normal_exr')
+
+            layout.prop(scene, 'compress_dataset')
 
             layout.prop(scene, 'logs')
             if scene.logs:

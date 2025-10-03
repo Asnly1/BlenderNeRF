@@ -198,111 +198,11 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                 rgb_output_node.file_slots[0].path = 'frame_#####'
 
                 tree.links.new(rl_node.outputs['Image'], rgb_output_node.inputs[0])
-
-                if scene.render_mask:
-                    mask_output_train = os.path.join(output_path, 'mask')
-                    os.makedirs(mask_output_train, exist_ok=True)
-                    
-                    scene.view_layers["ViewLayer"].use_pass_object_index = True
-                    
-                    # Initialize object pass indices for mask rendering.
-                    for obj in bpy.data.objects:
-                        obj.pass_index = 1
-
-                    # Clear the helper objects from the mask output.
-                    objects_to_exclude = [EMPTY_NAME, CAMERA_NAME]
-                    for obj in bpy.data.objects:
-                        if obj.name in objects_to_exclude:
-                            obj.pass_index = 0
-                            
-                    # Add the ID Mask node and target the pass index value of 1.
-                    id_mask_node = nodes.new('CompositorNodeIDMask')
-                    id_mask_node.index = 1  # Object pass index
-                    
-                    # Create a file output node for masks.
-                    mask_output_node = nodes.new('CompositorNodeOutputFile')
-                    mask_output_node.base_path = mask_output_train
-                    mask_output_node.file_slots[0].path = "frame_#####"
-                    mask_output_node.format.file_format = 'PNG'
-                    mask_output_node.format.color_depth = '8'
-                    mask_output_node.format.color_mode = 'BW'
-                    
-                    # Write 8-bit grayscale PNG masks.
-                    tree.links.new(rl_node.outputs['IndexOB'], id_mask_node.inputs[0])
-                    tree.links.new(id_mask_node.outputs[0], mask_output_node.inputs[0])
-                    
-                if scene.render_depth:
-                    depth_output_train = os.path.join(output_path, 'depth')
-                    os.makedirs(depth_output_train, exist_ok=True)
-                    
-                    scene.view_layers["ViewLayer"].use_pass_z = True
-
-                    # Create a file output node for depth maps.
-                    depth_output_node = nodes.new('CompositorNodeOutputFile')
-                    depth_output_node.base_path = depth_output_train
-                    depth_output_node.file_slots[0].path = "frame_#####"
-                    depth_output_node.format.file_format = 'PNG'
-                    depth_output_node.format.color_depth = '16'
-                    depth_output_node.format.color_mode = 'BW'
-
-                    # Normalize depth values to the 0-1 range.
-                    normalize_node = nodes.new('CompositorNodeNormalize')
-                    
-                    # Emit 16-bit grayscale PNG files.
-                    tree.links.new(rl_node.outputs['Depth'], normalize_node.inputs[0])
-                    tree.links.new(normalize_node.outputs[0], depth_output_node.inputs[0])
-                    
-                if scene.render_depth_exr:
-                    depth_exr_output_train = os.path.join(output_path, 'depth_exr')
-                    os.makedirs(depth_exr_output_train, exist_ok=True)
-                    
-                    scene.view_layers["ViewLayer"].use_pass_z = True
-
-                    # Output depth data as 32-bit float EXR files.
-                    depth_exr_output_node = nodes.new('CompositorNodeOutputFile')
-                    depth_exr_output_node.base_path = depth_exr_output_train
-                    depth_exr_output_node.file_slots[0].path = "frame_#####"
-                    depth_exr_output_node.format.file_format = 'OPEN_EXR'
-                    depth_exr_output_node.format.color_depth = '32'
-                    depth_exr_output_node.format.color_mode = 'BW'
-                    tree.links.new(rl_node.outputs['Depth'], depth_exr_output_node.inputs[0])
-                    
-                if scene.render_normal:
-                    normal_output_train = os.path.join(output_path, 'normal')
-                    os.makedirs(normal_output_train, exist_ok=True)
-
-                    scene.view_layers["ViewLayer"].use_pass_normal = True
-                    
-                    # Create a PNG output node for normal maps.
-                    normal_png_node = nodes.new('CompositorNodeOutputFile')
-                    normal_png_node.base_path = normal_output_train
-                    normal_png_node.file_slots[0].path = "frame_#####"
-                    normal_png_node.format.file_format = 'PNG'
-                    normal_png_node.format.color_depth = '8'
-                    normal_png_node.format.color_mode = 'RGB'
-
-                    # Export 8-bit RGB PNG normal maps.
-                    tree.links.new(rl_node.outputs['Normal'], normal_png_node.inputs[0])
-                    
-                if scene.render_normal_exr:
-                    normal_exr_output_train = os.path.join(output_path, 'normal_exr')
-                    os.makedirs(normal_exr_output_train, exist_ok=True)
-
-                    scene.view_layers["ViewLayer"].use_pass_normal = True
-                    
-                    # Output normal data as 32-bit float EXR files.
-                    normal_exr_node = nodes.new('CompositorNodeOutputFile')
-                    normal_exr_node.base_path = normal_exr_output_train
-                    normal_exr_node.file_slots[0].path = "frame_#####"
-                    normal_exr_node.format.file_format = 'OPEN_EXR'
-                    normal_exr_node.format.color_depth = '32'
-                    normal_exr_node.format.color_mode = 'RGB'
-                    tree.links.new(rl_node.outputs['Normal'], normal_exr_node.inputs[0])
+                helper.configure_auxiliary_outputs(scene, tree, rl_node, output_path)
 
                 bpy.ops.render.render('INVOKE_DEFAULT', animation=True, write_still=True)
 
                 helper.unregister_matrix_handler()
-                scene.rendering = (False, False, False, False)
 
         if not any(scene.rendering):
             helper.unregister_matrix_handler()
@@ -318,8 +218,9 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
             scene.camera = scene.init_active_camera
             scene.render.filepath = scene.init_output_path
 
-            # compress dataset and remove folder (only keep zip)
-            shutil.make_archive(output_path, 'zip', output_path) # output filename = output_path
-            shutil.rmtree(output_path)
+            # Optionally compress dataset and remove the working directory.
+            if scene.compress_dataset and os.path.isdir(output_path):
+                shutil.make_archive(output_path, 'zip', output_path)
+                shutil.rmtree(output_path)
 
         return {'FINISHED'}
