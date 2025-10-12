@@ -447,6 +447,57 @@ def cos_camera_update(scene):
     """Update camera position based on frame, either sequentially (spiral), randomly (sphere), or horizontally with multiple z-levels."""
     if CAMERA_NAME in scene.objects.keys():
         if scene.render_sequential:
+            if scene.horizontal_movement:
+                # Get current frame (relative to start frame)
+                rel_frame = scene.frame_current - scene.frame_start
+                
+                if scene.use_multi_level:
+                    # Determine which z-level to use based on frame count
+                    if rel_frame < scene.frames_1:
+                        # First z-level
+                        current_z_level = scene.z_level_1
+                        level_start = 0
+                        level_frames = scene.frames_1
+                    elif rel_frame < scene.frames_1 + scene.frames_2:
+                        # Second z-level
+                        current_z_level = scene.z_level_2
+                        level_start = scene.frames_1
+                        level_frames = scene.frames_2
+                    else:
+                        # Third z-level
+                        current_z_level = scene.z_level_3
+                        level_start = scene.frames_1 + scene.frames_2
+                        level_frames = scene.frames_3
+                    
+                    # Calculate relative frame within this level
+                    level_rel_frame = rel_frame - level_start
+                    
+                    # Calculate angle for this level (0-360 degrees for each level)
+                    angle = (360.0 * level_rel_frame) / level_frames
+                else:
+                    # Original single z-level logic
+                    current_z_level = scene.z_level
+                    angle = (360.0 * rel_frame) / scene.cos_nb_frames
+                
+                # Calculate position on sphere at specified z-level and angle
+                position = calculate_horizontal_point(scene, current_z_level, angle)
+                
+                # Update camera position
+                scene.objects[CAMERA_NAME].location = position
+                
+                # Make camera look at center of sphere
+                center = mathutils.Vector(scene.sphere_location)
+                direction = center - position
+                
+                # Set camera rotation
+                if scene.outwards:
+                    # If outwards is enabled, flip the direction
+                    direction = -direction
+                
+                # Calculate rotation quaternion
+                rot_quat = direction.to_track_quat('-Z', 'Y')
+                scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
+                
             # Spiral path logic for sequential rendering.
             frame = scene.frame_current
             total_frames = scene.cos_nb_frames
@@ -502,56 +553,6 @@ def cos_camera_update(scene):
             center = mathutils.Vector(scene.sphere_location)
             direction = center - final_point
             # Derive orientation from the look-at direction.
-            rot_quat = direction.to_track_quat('-Z', 'Y')
-            scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
-        elif scene.render_sequential and scene.horizontal_movement:
-            # Get current frame (relative to start frame)
-            rel_frame = scene.frame_current - scene.frame_start
-            
-            if scene.use_multi_level:
-                # Determine which z-level to use based on frame count
-                if rel_frame < scene.frames_1:
-                    # First z-level
-                    current_z_level = scene.z_level_1
-                    level_start = 0
-                    level_frames = scene.frames_1
-                elif rel_frame < scene.frames_1 + scene.frames_2:
-                    # Second z-level
-                    current_z_level = scene.z_level_2
-                    level_start = scene.frames_1
-                    level_frames = scene.frames_2
-                else:
-                    # Third z-level
-                    current_z_level = scene.z_level_3
-                    level_start = scene.frames_1 + scene.frames_2
-                    level_frames = scene.frames_3
-                
-                # Calculate relative frame within this level
-                level_rel_frame = rel_frame - level_start
-                
-                # Calculate angle for this level (0-360 degrees for each level)
-                angle = (360.0 * level_rel_frame) / level_frames
-            else:
-                # Original single z-level logic
-                current_z_level = scene.z_level
-                angle = (360.0 * rel_frame) / scene.cos_nb_frames
-            
-            # Calculate position on sphere at specified z-level and angle
-            position = calculate_horizontal_point(scene, current_z_level, angle)
-            
-            # Update camera position
-            scene.objects[CAMERA_NAME].location = position
-            
-            # Make camera look at center of sphere
-            center = mathutils.Vector(scene.sphere_location)
-            direction = center - position
-            
-            # Set camera rotation
-            if scene.outwards:
-                # If outwards is enabled, flip the direction
-                direction = -direction
-            
-            # Calculate rotation quaternion
             rot_quat = direction.to_track_quat('-Z', 'Y')
             scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
         else:
