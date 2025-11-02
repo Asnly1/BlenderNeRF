@@ -171,6 +171,17 @@ class BlenderNeRF_Operator(bpy.types.Operator):
         with open(filepath, 'w') as file:
             json.dump(data, file, indent=indent)
 
+    def load_existing_transforms_data(self, file_path):
+        """Load a transforms JSON file and return its data dictionary."""
+        if not os.path.exists(file_path):
+            return None
+
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file_handle:
+                return json.load(file_handle)
+        except Exception:
+            return None
+
     def is_power_of_two(self, x):
         return math.log2(x).is_integer()
 

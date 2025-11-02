@@ -2,9 +2,6 @@ import os
 import shutil
 import bpy
 from . import helper, blender_nerf_operator
-import json
-
-
 # global addon script variables
 EMPTY_NAME = 'BlenderNeRF Sphere'
 CAMERA_NAME = 'BlenderNeRF Camera'
@@ -14,17 +11,6 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
     '''Camera on Sphere Operator'''
     bl_idname = 'object.camera_on_sphere'
     bl_label = 'Camera on Sphere COS'
-
-    def load_existing_transforms_data(self, file_path):
-        """Read extrinsic matrices stored in an existing transforms file."""
-        try:
-            if os.path.exists(file_path):
-                with open(file_path, 'r') as f:
-                    data = json.load(f)
-                    return data.get('frames', [])
-            return None
-        except Exception as e:
-            return None
 
     def execute(self, context):
         scene = context.scene
@@ -65,11 +51,12 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
             if not test_json:
                 self.report({'ERROR'}, 'Matrix transforms path not set!')
                 return {'FINISHED'}
-            existing_frames = self.load_existing_transforms_data(test_json)
+            existing_data = self.load_existing_transforms_data(test_json)
             
-            if existing_frames:
+            if existing_data:
+                existing_frames = existing_data.get('frames', [])
                 output_data['frames'] = []
-                for index, frame_data in enumerate(existing_frames.get('frames', [])):
+                for index, frame_data in enumerate(existing_frames):
                     frame_info = {
                         'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
                         'transform_matrix': frame_data.get('transform_matrix', [])
