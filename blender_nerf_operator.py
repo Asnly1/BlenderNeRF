@@ -19,7 +19,7 @@ TMP_VERTEX_COLORS = 'blendernerf_vertex_colors_tmp'
 class BlenderNeRF_Operator(bpy.types.Operator):
 
     # camera intrinsics
-    def get_camera_intrinsics(self, scene, camera):
+    def get_camera_intrinsics(self, scene, camera, force_full=False):
         camera_angle_x = camera.data.angle_x
         camera_angle_y = camera.data.angle_y
 
@@ -81,8 +81,9 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             'aabb_scale': scene.aabb
         }
 
-        if scene.log_intrinsic:
+        if force_full:
             return camera_intr_dict
+
         return {'camera_angle_x': camera_angle_x} if scene.nerf else camera_intr_dict
 
     # camera extrinsics (transform matrices)
@@ -306,9 +307,9 @@ class BlenderNeRF_Operator(bpy.types.Operator):
             logdata['Frames'] = scene.mat_nb_frames
             logdata['Dataset Name'] = scene.mat_dataset_name
 
-        if camera:
+        if camera and scene.log_intrinsic:
             # Persist full camera intrinsics for reference in the log file.
-            camera_intrinsics = self.get_camera_intrinsics(scene, camera)
+            camera_intrinsics = self.get_camera_intrinsics(scene, camera, force_full=True)
 
             logdata['Camera Intrinsics'] = {
                 'Camera Angle X': camera_intrinsics.get('camera_angle_x', 0),
