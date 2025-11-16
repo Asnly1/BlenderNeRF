@@ -441,120 +441,105 @@ def calculate_horizontal_point(scene, z_level, angle_degrees):
     
     return final_point
 
+def point_to_center(scene, camera, location):
+    center = mathutils.Vector(scene.sphere_location)
+    direction = center - location
+    if scene.outwards:
+        direction = -direction
+    rot_quat = direction.to_track_quat('-Z', 'Y')
+    camera.rotation_euler = rot_quat.to_euler()
+        
 # Update the cos_camera_update function to include horizontal movement
 @persistent
 def cos_camera_update(scene):
     """Update camera position based on frame, either sequentially (spiral), randomly (sphere), or horizontally with multiple z-levels."""
-    if CAMERA_NAME in scene.objects.keys():
-        if scene.render_sequential:
-            if scene.horizontal_movement:
-                # Get current frame (relative to start frame)
-                rel_frame = scene.frame_current - scene.frame_start
-                
-                if scene.use_multi_level:
-                    # Determine which z-level to use based on frame count
-                    if rel_frame < scene.frames_1:
-                        # First z-level
-                        current_z_level = scene.z_level_1
-                        level_start = 0
-                        level_frames = scene.frames_1
-                    elif rel_frame < scene.frames_1 + scene.frames_2:
-                        # Second z-level
-                        current_z_level = scene.z_level_2
-                        level_start = scene.frames_1
-                        level_frames = scene.frames_2
-                    else:
-                        # Third z-level
-                        current_z_level = scene.z_level_3
-                        level_start = scene.frames_1 + scene.frames_2
-                        level_frames = scene.frames_3
-                    
-                    # Calculate relative frame within this level
-                    level_rel_frame = rel_frame - level_start
-                    
-                    # Calculate angle for this level (0-360 degrees for each level)
-                    angle = (360.0 * level_rel_frame) / level_frames
-                else:
-                    # Original single z-level logic
-                    current_z_level = scene.z_level
-                    angle = (360.0 * rel_frame) / scene.cos_nb_frames
-                
-                # Calculate position on sphere at specified z-level and angle
-                position = calculate_horizontal_point(scene, current_z_level, angle)
-                
-                # Update camera position
-                scene.objects[CAMERA_NAME].location = position
-                
-                # Make camera look at center of sphere
-                center = mathutils.Vector(scene.sphere_location)
-                direction = center - position
-                
-                # Set camera rotation
-                if scene.outwards:
-                    # If outwards is enabled, flip the direction
-                    direction = -direction
-                
-                # Calculate rotation quaternion
-                rot_quat = direction.to_track_quat('-Z', 'Y')
-                scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
-                
-            # Spiral path logic for sequential rendering.
-            frame = scene.frame_current
-            total_frames = scene.cos_nb_frames
-            
-            # Configure the spiral to sweep from pole to pole.
-            r = scene.sphere_radius  # Maximum radius reached at the equator.
-            omega = 2.0  # Angular velocity around the sphere.
-            
-            # Compute polar angle θ in the range [0, π].
-            theta = (math.pi * frame) / total_frames
-            
-            # Keep the radius between 0.67r and r so the path stays mid-sphere.
-            # Map sin(theta) ∈ [0, 1] to the desired range.
-            radius_factor = 0.67 + 0.33 * math.sin(theta)
-            radius = radius_factor * r
-            
-            # Interpolate the height between the configured level bounds.
-            z_min = scene.lowest_level * r
-            z_max = scene.highest_level * r
-            z_range = z_max - z_min
-            
-            # Determine the current elevation.
-            if scene.upper_views:  # Restrict the sweep to the upper hemisphere.
-                z = z_min + z_range * (theta / math.pi)
-            else:
-                z = z_min + z_range * (theta / math.pi)
-            # Azimuthal angle around the sphere.
-            phi = omega * theta
-            
-            # Base spiral coordinates before scaling/rotation.
-            x = radius * math.cos(phi)
-            y = radius * math.sin(phi)
-            
-            # Apply non-uniform scaling if needed.
-            scale = mathutils.Vector(scene.sphere_scale)
-            scaled_point = mathutils.Vector((
-                scale[0] * x,
-                scale[1] * y,
-                scale[2] * z
-            ))
-            
-            # Apply rotation defined on the helper sphere.
-            rotation = mathutils.Euler(scene.sphere_rotation).to_matrix()
-            rotated_point = rotation @ scaled_point
-            
-            # Translate into world space.
-            final_point = mathutils.Vector(scene.sphere_location) + rotated_point
-            
-            # Update camera position for this frame.
-            scene.objects[CAMERA_NAME].location = final_point
-            
-            # Ensure the camera looks at the center of the sphere.
-            center = mathutils.Vector(scene.sphere_location)
-            direction = center - final_point
-            # Derive orientation from the look-at direction.
-            rot_quat = direction.to_track_quat('-Z', 'Y')
-            scene.objects[CAMERA_NAME].rotation_euler = rot_quat.to_euler()
+    camera = scene.objects.get(CAMERA_NAME)
+    if not camera:
+        return
+
+    if not scene.render_sequential:
+        # Fallback to sampling uniformly across the sphere
+        camera.location = sample_from_sphere(scene)
+        return
+
+    if scene.horizontal_movement:
+        # Travel along horizontal rings, optionally across multiple z-levels
+        rel_frame = max(scene.frame_current - scene.frame_start, 0)
+
+        if scene.use_multi_level:
+            # Sum frames to determine how many steps compose one full loop
+            level_data = [
+                (scene.z_level_1, scene.frames_1),
+                (scene.z_level_2, scene.frames_2),
+                (scene.z_level_3, scene.frames_3),
+            ]
+            level_data = [(level, frames) for (level, frames) in level_data if frames > 0]
+            total_frames = sum(frames for _, frames in level_data)
+            rel_frame %= total_frames
+
+            current_z_level = scene.z_level
+            level_start = 0
+            level_frames = total_frames
+            for level, frames in level_data:
+                if rel_frame < level_start + frames:
+                    current_z_level = level
+                    level_frames = frames
+                    break
+                level_start += frames
+
+            level_rel_frame = rel_frame - level_start
+            angle = (360.0 * level_rel_frame) / level_frames
         else:
-            # Fallback to sampling uniformly across the sphere.
-            scene.objects[CAMERA_NAME].location = sample_from_sphere(scene)
+            total_frames = scene.cos_nb_frames
+            rel_frame %= total_frames
+            current_z_level = scene.z_level
+            angle = (360.0 * rel_frame) / total_frames
+
+        position = calculate_horizontal_point(scene, current_z_level, angle)
+        camera.location = position
+        point_to_center(scene, camera, position)
+        return
+
+    # Spiral path logic for sequential rendering
+    total_frames = scene.cos_nb_frames
+    rel_frame = (scene.frame_current - scene.frame_start) % total_frames
+
+    # Maximum radius reached at the equator
+    r = scene.sphere_radius
+    # Angular velocity around the sphere
+    omega = 2.0
+
+    # Compute polar angle θ in the range [0, π]
+    theta = (math.pi * rel_frame) / total_frames
+
+    # Keep the radius between 0.67r and r so the path stays mid-sphere
+    radius_factor = 0.67 + 0.33 * math.sin(theta)
+    radius = radius_factor * r
+
+    # Interpolate the height between the configured level bounds
+    z_min = scene.lowest_level * r
+    z_max = scene.highest_level * r
+    if scene.upper_views:
+        z_min = max(0.0, z_min)
+    z_range = z_max - z_min
+    z = z_min + z_range * (theta / math.pi)
+
+    # Azimuthal angle around the sphere
+    phi = omega * theta
+
+    # Base spiral coordinates before scaling/rotation
+    x = radius * math.cos(phi)
+    y = radius * math.sin(phi)
+
+    scale = mathutils.Vector(scene.sphere_scale)
+    scaled_point = mathutils.Vector((
+        scale[0] * x,
+        scale[1] * y,
+        scale[2] * z
+    ))
+
+    rotation = mathutils.Euler(scene.sphere_rotation).to_matrix()
+    final_point = mathutils.Vector(scene.sphere_location) + rotation @ scaled_point
+
+    camera.location = final_point
+    point_to_center(scene, camera, final_point)
