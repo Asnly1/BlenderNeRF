@@ -23,12 +23,14 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
             self.report({'ERROR'}, 'Matrix transforms path not set!')
             return False
 
-        if not os.path.exists(transforms_path):
+        abs_path = bpy.path.abspath(transforms_path)
+
+        if not os.path.exists(abs_path):
             self.report({'ERROR'}, f'Transforms file not found: {transforms_path}')
             return False
 
         try:
-            with open(transforms_path, 'r') as file_handle:
+            with open(abs_path, 'r') as file_handle:
                 self.transforms_data = json.load(file_handle)
 
             frames_count = len(self.transforms_data.get('frames', []))

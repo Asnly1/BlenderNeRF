@@ -174,11 +174,15 @@ class BlenderNeRF_Operator(bpy.types.Operator):
 
     def load_existing_transforms_data(self, file_path):
         """Load a transforms JSON file and return its data dictionary."""
-        if not os.path.exists(file_path):
+        if not file_path:
+            return None
+
+        abs_path = bpy.path.abspath(file_path)
+        if not os.path.exists(abs_path):
             return None
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as file_handle:
+            with open(abs_path, 'r', encoding='utf-8') as file_handle:
                 return json.load(file_handle)
         except Exception:
             return None
