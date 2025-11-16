@@ -139,7 +139,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                 output_data['frames'] = []
                 for index, frame_data in enumerate(self.transforms_data.get('frames', [])):
                     frame_info = {
-                        'file_path': os.path.join('train', f'frame_{index + 1:05d}.png'),
+                        'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
                         'transform_matrix': frame_data.get('transform_matrix', [])
                     }
                     output_data['frames'].append(frame_info)
