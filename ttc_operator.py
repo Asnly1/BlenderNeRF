@@ -42,25 +42,24 @@ class TrainTestCameras(blender_nerf_operator.BlenderNeRF_Operator):
         scene.init_frame_end = scene.frame_end
 
         if scene.test_data:
+            output_frames = None
             test_json = getattr(scene, 'mat_transforms_path', '')
-            if not test_json:
-                self.report({'ERROR'}, 'Matrix transforms path not set!')
-                return {'FINISHED'}
-            existing_data = self.load_existing_transforms_data(test_json)
-            
-            if existing_data:
-                existing_frames = existing_data.get('frames', [])
-                output_test_data['frames'] = []
-                for index, frame_data in enumerate(existing_frames):
-                    frame_info = {
-                        'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
-                        'transform_matrix': frame_data.get('transform_matrix', [])
-                    }
-                    output_test_data['frames'].append(frame_info)
-            else:
-                # Fallback to generating extrinsics within Blender if no cache is found.
-                output_test_data['frames'] = self.get_camera_extrinsics(scene, test_camera, mode='TEST', method='COS')
-            
+            if test_json:
+                existing_data = self.load_existing_transforms_data(test_json)
+                if existing_data:
+                    existing_frames = existing_data.get('frames', [])
+                    output_frames = []
+                    for index, frame_data in enumerate(existing_frames):
+                        frame_info = {
+                            'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
+                            'transform_matrix': frame_data.get('transform_matrix', [])
+                        }
+                        output_frames.append(frame_info)
+
+            if output_frames is None:
+                output_frames = self.get_camera_extrinsics(scene, test_camera, mode='TEST', method='TTC')
+
+            output_test_data['frames'] = output_frames
             self.save_json(output_path, 'transforms_test.json', output_test_data)
 
         if scene.train_data:
