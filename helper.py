@@ -13,6 +13,7 @@ CAMERA_NAME = 'BlenderNeRF Camera'
 
 _matrix_frame_handler = None
 _matrix_handler_scene = None
+_compositor_states = {}
 
 ## property poll and update functions
 
@@ -145,7 +146,45 @@ def unregister_matrix_handler():
     if cos_camera_update not in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.append(cos_camera_update)
 
+def prepare_compositor(scene):
+    """Create a temporary compositor tree and preserve the user's original setup."""
+    scene_key = scene.as_pointer()
+    if scene_key in _compositor_states:
+        temp_tree = _compositor_states[scene_key][-1]
+        temp_tree.nodes.clear()
+        return temp_tree
 
+    original_tree = scene.node_tree if scene.use_nodes and scene.node_tree else None
+    original_use_nodes = scene.use_nodes
+    original_use_compositing = scene.render.use_compositing
+
+    temp_tree = bpy.data.node_groups.new(name='BlenderNeRF_TempCompositor', type='CompositorNodeTree')
+
+    scene.render.use_compositing = True
+    scene.render.use_sequencer = False
+    scene.use_nodes = True
+    scene.node_tree = temp_tree
+
+    _compositor_states[scene_key] = (original_tree, original_use_nodes, original_use_compositing, temp_tree)
+    return temp_tree
+
+
+def restore_compositor(scene):
+    """Restore the compositor state saved by prepare_compositor."""
+    scene_key = scene.as_pointer()
+    state = _compositor_states.pop(scene_key, None)
+    if not state:
+        return
+
+    original_tree, original_use_nodes, original_use_compositing, temp_tree = state
+
+    scene.node_tree = original_tree
+    scene.use_nodes = original_use_nodes
+    scene.render.use_compositing = original_use_compositing
+
+    if temp_tree and temp_tree.name in bpy.data.node_groups:
+        bpy.data.node_groups.remove(temp_tree, do_unlink=True)
+        
 def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
     """Set up optional mask/depth/normal outputs based on scene toggles."""
     # Mask output
@@ -371,10 +410,7 @@ def post_render(scene):
             scene.frame_end = scene.init_frame_end
             unregister_matrix_handler()
 
-        if scene.node_tree:
-            scene.node_tree.nodes.clear()
-        scene.use_nodes = False
-        scene.render.use_compositing = False
+        restore_compositor(scene)
 
         scene.rendering = (False, False, False, False)
         scene.render.filepath = scene.init_output_path # reset filepath

@@ -185,10 +185,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
 
                 helper.register_matrix_handler(scene, self.transforms_camera_update)
 
-                scene.render.use_compositing = True
-                scene.render.use_sequencer = False
-                scene.use_nodes = True
-                tree = scene.node_tree
+                tree = helper.prepare_compositor(scene)
                 nodes = tree.nodes
                 nodes.clear()
 

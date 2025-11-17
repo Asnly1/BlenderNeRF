@@ -74,10 +74,7 @@ class TrainTestCameras(blender_nerf_operator.BlenderNeRF_Operator):
                 scene.rendering = (False, True, False, False)
                 scene.frame_end = scene.frame_start + scene.ttc_nb_frames - 1
 
-                scene.render.use_compositing = True
-                scene.render.use_sequencer = False
-                scene.use_nodes = True
-                tree = scene.node_tree
+                tree = helper.prepare_compositor(scene)
                 nodes = tree.nodes
                 nodes.clear()
 

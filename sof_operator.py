@@ -72,10 +72,7 @@ class SubsetOfFrames(blender_nerf_operator.BlenderNeRF_Operator):
                 scene.rendering = (True, False, False, False)
                 scene.frame_step = scene.train_frame_steps
 
-                scene.render.use_compositing = True
-                scene.render.use_sequencer = False
-                scene.use_nodes = True
-                tree = scene.node_tree
+                tree = helper.prepare_compositor(scene)
                 nodes = tree.nodes
                 nodes.clear()
 

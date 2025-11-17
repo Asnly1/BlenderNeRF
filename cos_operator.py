@@ -86,11 +86,7 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
                 scene.rendering = (False, False, True, False)
                 scene.frame_end = scene.frame_start + scene.cos_nb_frames - 1 # update end frame
 
-                # Enable the compositor and clear existing nodes.
-                scene.render.use_compositing = True
-                scene.render.use_sequencer = False
-                scene.use_nodes = True
-                tree = scene.node_tree
+                tree = helper.prepare_compositor(scene)
                 nodes = tree.nodes
                 nodes.clear()
                 
