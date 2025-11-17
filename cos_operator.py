@@ -88,14 +88,15 @@ class CameraOnSphere(blender_nerf_operator.BlenderNeRF_Operator):
 
                 tree = helper.prepare_compositor(scene)
                 nodes = tree.nodes
-                nodes.clear()
                 
                 # Add the render layer node for the current scene.
                 rl_node = nodes.new('CompositorNodeRLayers')
                 rl_node.scene = scene
+                helper.mark_temp_node(scene, rl_node)
 
                 # Create a file output node for RGB exports.
                 rgb_output_node = nodes.new('CompositorNodeOutputFile')
+                helper.mark_temp_node(scene, rgb_output_node)
                 rgb_output_node.base_path = os.path.join(output_train, '')
                 rgb_output_node.file_slots[0].path = "frame_#####"
                 

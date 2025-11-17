@@ -139,7 +139,7 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
                 output_data['frames'] = []
                 for index, frame_data in enumerate(self.transforms_data.get('frames', [])):
                     frame_info = {
-                        'file_path': os.path.join('test', f'frame_{index + 1:05d}.png'),
+                        'file_path': os.path.join('train', f'frame_{index + 1:05d}.png'),
                         'transform_matrix': frame_data.get('transform_matrix', [])
                     }
                     output_data['frames'].append(frame_info)
@@ -187,12 +187,13 @@ class MatrixCameraRender(blender_nerf_operator.BlenderNeRF_Operator):
 
                 tree = helper.prepare_compositor(scene)
                 nodes = tree.nodes
-                nodes.clear()
 
                 rl_node = nodes.new('CompositorNodeRLayers')
                 rl_node.scene = scene
+                helper.mark_temp_node(scene, rl_node)
 
                 rgb_output_node = nodes.new('CompositorNodeOutputFile')
+                helper.mark_temp_node(scene, rgb_output_node)
                 rgb_output_node.base_path = os.path.join(output_train, '')
                 rgb_output_node.file_slots[0].path = 'frame_#####'
 

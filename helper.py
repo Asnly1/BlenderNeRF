@@ -146,44 +146,57 @@ def unregister_matrix_handler():
     if cos_camera_update not in bpy.app.handlers.frame_change_post:
         bpy.app.handlers.frame_change_post.append(cos_camera_update)
 
+def _cleanup_temp_nodes(scene, state):
+    tree = scene.node_tree
+    if not tree:
+        return
+
+    for node_name in state.get('temp_nodes', []):
+        node = tree.nodes.get(node_name)
+        if node:
+            tree.nodes.remove(node)
+    state['temp_nodes'] = []
+
+
 def prepare_compositor(scene):
-    """Create a temporary compositor tree and preserve the user's original setup."""
+    """Enable compositing and track nodes created by BlenderNeRF."""
     scene_key = scene.as_pointer()
-    if scene_key in _compositor_states:
-        temp_tree = _compositor_states[scene_key][-1]
-        temp_tree.nodes.clear()
-        return temp_tree
-
-    original_tree = scene.node_tree if scene.use_nodes and scene.node_tree else None
-    original_use_nodes = scene.use_nodes
-    original_use_compositing = scene.render.use_compositing
-
-    temp_tree = bpy.data.node_groups.new(name='BlenderNeRF_TempCompositor', type='CompositorNodeTree')
+    state = _compositor_states.get(scene_key)
+    if state:
+        _cleanup_temp_nodes(scene, state)
+    else:
+        state = {
+            'use_nodes': scene.use_nodes,
+            'use_compositing': scene.render.use_compositing,
+            'temp_nodes': []
+        }
+        _compositor_states[scene_key] = state
 
     scene.render.use_compositing = True
     scene.render.use_sequencer = False
     scene.use_nodes = True
-    scene.node_tree = temp_tree
 
-    _compositor_states[scene_key] = (original_tree, original_use_nodes, original_use_compositing, temp_tree)
-    return temp_tree
+    return scene.node_tree
+
+
+def mark_temp_node(scene, node):
+    """Register a node for removal after rendering finishes."""
+    scene_key = scene.as_pointer()
+    state = _compositor_states.get(scene_key)
+    if state and node:
+        state['temp_nodes'].append(node.name)
 
 
 def restore_compositor(scene):
-    """Restore the compositor state saved by prepare_compositor."""
+    """Restore user compositor settings and remove temporary nodes."""
     scene_key = scene.as_pointer()
     state = _compositor_states.pop(scene_key, None)
     if not state:
         return
 
-    original_tree, original_use_nodes, original_use_compositing, temp_tree = state
-
-    scene.node_tree = original_tree
-    scene.use_nodes = original_use_nodes
-    scene.render.use_compositing = original_use_compositing
-
-    if temp_tree and temp_tree.name in bpy.data.node_groups:
-        bpy.data.node_groups.remove(temp_tree, do_unlink=True)
+    _cleanup_temp_nodes(scene, state)
+    scene.use_nodes = state['use_nodes']
+    scene.render.use_compositing = state['use_compositing']
         
 def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
     """Set up optional mask/depth/normal outputs based on scene toggles."""
@@ -204,9 +217,11 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
                 bpy.data.objects[helper_name].pass_index = 0
 
         id_mask_node = tree.nodes.new('CompositorNodeIDMask')
+        mark_temp_node(scene, id_mask_node)
         id_mask_node.index = 1
 
         mask_output_node = tree.nodes.new('CompositorNodeOutputFile')
+        mark_temp_node(scene, mask_output_node)
         mask_output_node.base_path = mask_output
         mask_output_node.file_slots[0].path = 'frame_#####'
         mask_output_node.format.file_format = 'PNG'
@@ -224,6 +239,7 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
         scene.view_layers['ViewLayer'].use_pass_z = True
 
         depth_output_node = tree.nodes.new('CompositorNodeOutputFile')
+        mark_temp_node(scene, depth_output_node)
         depth_output_node.base_path = depth_output
         depth_output_node.file_slots[0].path = 'frame_#####'
         depth_output_node.format.file_format = 'PNG'
@@ -231,6 +247,7 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
         depth_output_node.format.color_mode = 'BW'
 
         normalize_node = tree.nodes.new('CompositorNodeNormalize')
+        mark_temp_node(scene, normalize_node)
 
         tree.links.new(rl_node.outputs['Depth'], normalize_node.inputs[0])
         tree.links.new(normalize_node.outputs[0], depth_output_node.inputs[0])
@@ -243,6 +260,7 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
         scene.view_layers['ViewLayer'].use_pass_z = True
 
         depth_exr_node = tree.nodes.new('CompositorNodeOutputFile')
+        mark_temp_node(scene, depth_exr_node)
         depth_exr_node.base_path = depth_exr_output
         depth_exr_node.file_slots[0].path = 'frame_#####'
         depth_exr_node.format.file_format = 'OPEN_EXR'
@@ -259,6 +277,7 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
         scene.view_layers['ViewLayer'].use_pass_normal = True
 
         normal_png_node = tree.nodes.new('CompositorNodeOutputFile')
+        mark_temp_node(scene, normal_png_node)
         normal_png_node.base_path = normal_output
         normal_png_node.file_slots[0].path = 'frame_#####'
         normal_png_node.format.file_format = 'PNG'
@@ -275,6 +294,7 @@ def configure_auxiliary_outputs(scene, tree, rl_node, output_root):
         scene.view_layers['ViewLayer'].use_pass_normal = True
 
         normal_exr_node = tree.nodes.new('CompositorNodeOutputFile')
+        mark_temp_node(scene, normal_exr_node)
         normal_exr_node.base_path = normal_exr_output
         normal_exr_node.file_slots[0].path = 'frame_#####'
         normal_exr_node.format.file_format = 'OPEN_EXR'
